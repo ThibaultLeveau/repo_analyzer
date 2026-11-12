@@ -12,26 +12,33 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from repopilot.architecture import GROUP_SIZE, Architecture, PackageTree
 from repopilot.explorer import PAGE_LINES, browse
 from repopilot.github import GitHubError
+from repopilot.grounding import StructuredModel
 from repopilot.imports import ImportService, import_service
 from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
 
 
 def create_app(
-    *, data_dir: Path | None = None, transport: httpx2.BaseTransport | None = None
+    *,
+    data_dir: Path | None = None,
+    transport: httpx2.BaseTransport | None = None,
+    model: StructuredModel | None = None,
 ) -> FastAPI:
     directory = data_dir or Path(
         os.environ.get("REPOPILOT_DATA_DIR", Path.home() / ".repopilot")
     )
     engine: ImportService
+    architecture: Architecture
     csrf = secrets.token_urlsafe(32)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        nonlocal engine
+        nonlocal engine, architecture
         with import_service(directory, transport=transport) as engine:
+            architecture = Architecture(engine.cache, engine.store, model)
             yield
 
     app = FastAPI(title="RepoPilot", lifespan=lifespan)
@@ -124,6 +131,61 @@ def create_app(
     @app.get("/setup", response_class=HTMLResponse)
     def setup(request: Request) -> HTMLResponse:
         return page(request, "Local setup")
+
+    @app.get("/repos/{owner}/{repo}/{sha}/architecture", response_class=HTMLResponse)
+    def architecture_view(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        path: str = "",
+        notice: str = "",
+    ) -> HTMLResponse:
+        repository = f"{owner}/{repo}"
+        try:
+            roles = architecture.roles(repository, sha)
+        except (FileNotFoundError, GitHubError, SnapshotError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        selected = next((r for r in roles if r.path == path), None)
+        if path and selected is None:
+            raise HTTPException(404, "Module not found")
+        if not selected and roles:
+            selected = roles[0]
+        start = roles.index(selected) // GROUP_SIZE * GROUP_SIZE if selected else 0
+        paths = {"owner": owner, "repo": repo, "sha": sha}
+        return page(
+            request,
+            "Architecture",
+            repository=repository,
+            sha=sha,
+            explorer_url=request.url_for("explorer", **paths),
+            architecture_url=request.url_for("architecture_view", **paths),
+            generate_url=request.url_for("generate_roles", **paths),
+            tree=PackageTree.build(roles),
+            roles=roles[start : start + GROUP_SIZE],
+            selected=selected,
+            notice=notice,
+            diagnostics=architecture.inventory(repository, sha)[1],
+            sources=architecture.evidence(repository, sha, selected)
+            if selected
+            else [],
+        )
+
+    @app.post(
+        "/repos/{owner}/{repo}/{sha}/architecture/descriptions",
+        dependencies=[Depends(protect)],
+    )
+    def generate_roles(
+        request: Request, owner: str, repo: str, sha: str, path: Annotated[str, Form()]
+    ) -> Response:
+        try:
+            status = architecture.generate(f"{owner}/{repo}", sha, path)
+        except (FileNotFoundError, GitHubError, SnapshotError) as exc:
+            raise HTTPException(404, "Module or snapshot not found") from exc
+        target = request.url_for("architecture_view", owner=owner, repo=repo, sha=sha)
+        return RedirectResponse(
+            str(target.include_query_params(path=path, notice=status)), status_code=303
+        )
 
     @app.get("/repos/{owner}/{repo}/{sha}/code", response_class=HTMLResponse)
     def explorer(
