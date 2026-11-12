@@ -1,8 +1,18 @@
 import re
-from dataclasses import dataclass
 from urllib.parse import quote, urlsplit
 
 import httpx2
+
+from repopilot.models import RepositoryHead
+
+__all__ = [
+    "GitHubError",
+    "RateLimited",
+    "RepositoryHead",
+    "api_get",
+    "repository_name",
+    "resolve_repository",
+]
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}")
 _API = "https://api.github.com"
@@ -17,13 +27,6 @@ class RateLimited(GitHubError):
         super().__init__("GitHub rate limit reached. Try again after the limit resets.")
         self.reset_at = headers.get("x-ratelimit-reset")
         self.retry_after = headers.get("retry-after")
-
-
-@dataclass(frozen=True)
-class RepositoryHead:
-    full_name: str
-    default_branch: str
-    sha: str
 
 
 def _valid_name(name: str) -> bool:

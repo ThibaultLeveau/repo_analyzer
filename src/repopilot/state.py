@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from repopilot.models import RepositoryHead
+
 JobStatus = Literal["queued", "running", "completed", "failed"]
 
 _SCHEMA = """
@@ -32,6 +34,13 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS active_job ON jobs(repository, ref)
     WHERE status IN ('queued', 'running');
+CREATE TABLE IF NOT EXISTS import_sources (
+    job_id INTEGER PRIMARY KEY REFERENCES jobs(id),
+    full_name TEXT NOT NULL,
+    default_branch TEXT NOT NULL,
+    sha TEXT NOT NULL,
+    fetched INTEGER NOT NULL DEFAULT 0
+);
 CREATE TRIGGER IF NOT EXISTS job_transition_time AFTER UPDATE OF status ON jobs
 BEGIN
     UPDATE jobs SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = NEW.id;
@@ -79,9 +88,17 @@ class StateStore:
                 db.execute("BEGIN IMMEDIATE")
             yield db
 
-    def submit(self, repository: str, ref: str = "HEAD") -> tuple[Job, bool]:
+    def submit(
+        self,
+        repository: str,
+        ref: str = "HEAD",
+        *,
+        pinned: RepositoryHead | None = None,
+    ) -> tuple[Job, bool]:
         """Return the active job and whether this caller created it."""
         repository = repository.strip().lower()
+        if pinned is not None:
+            ref = pinned.sha
         if not repository or not ref:
             raise ValueError("A repository and reference are required")
         with self._connection(write=True) as db:
@@ -97,7 +114,37 @@ class StateStore:
                 "INSERT INTO jobs(repository, ref, status) VALUES (?, ?, 'queued') RETURNING *",
                 (repository, ref),
             ).fetchone()
-            return Job(**row), True
+            job = Job(**row)
+            if pinned is not None:
+                self._pin(db, job.id, pinned)
+            return job, True
+
+    @staticmethod
+    def _pin(db: sqlite3.Connection, job_id: int, head: RepositoryHead) -> None:
+        db.execute(
+            "INSERT INTO import_sources(job_id, full_name, default_branch, sha) VALUES (?,?,?,?)",
+            (job_id, head.full_name, head.default_branch, head.sha),
+        )
+
+    def pin(self, job_id: int, head: RepositoryHead) -> None:
+        with self._connection(write=True) as db:
+            self._pin(db, job_id, head)
+
+    def source(self, job_id: int) -> tuple[RepositoryHead | None, bool]:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT full_name, default_branch, sha, fetched FROM import_sources WHERE job_id = ?",
+                (job_id,),
+            ).fetchone()
+            if row is None:
+                return None, False
+            return RepositoryHead(row[0], row[1], row[2]), bool(row[3])
+
+    def mark_fetched(self, job_id: int) -> None:
+        with self._connection(write=True) as db:
+            db.execute(
+                "UPDATE import_sources SET fetched = 1 WHERE job_id = ?", (job_id,)
+            )
 
     def job(self, job_id: int) -> Job:
         with self._connection() as db:
@@ -127,18 +174,25 @@ class StateStore:
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise ValueError("A full lowercase commit SHA is required")
         with self._connection(write=True) as db:
-            db.execute(
-                "INSERT OR IGNORE INTO snapshots(repository, sha) "
-                "SELECT repository, ? FROM jobs WHERE id = ? AND status = 'running'",
-                (sha, job_id),
-            )
-            changed = db.execute(
-                "UPDATE jobs SET status = 'completed', sha = ? "
-                "WHERE id = ? AND status = 'running'",
-                (sha, job_id),
-            ).rowcount
-            if not changed:
+            row = db.execute(
+                "SELECT COALESCE(s.full_name, j.repository), s.sha FROM jobs j "
+                "LEFT JOIN import_sources s ON j.id = s.job_id WHERE j.id = ? AND j.status = 'running'",
+                (job_id,),
+            ).fetchone()
+            if row is None:
                 raise JobStateError("Only running jobs can complete")
+            repository, pinned_sha = row
+            if pinned_sha is not None and pinned_sha != sha:
+                raise JobStateError("Commit differs from the pinned source")
+            db.execute("INSERT OR IGNORE INTO repositories VALUES (?)", (repository,))
+            db.execute(
+                "INSERT OR IGNORE INTO snapshots(repository, sha) VALUES (?,?)",
+                (repository, sha),
+            )
+            db.execute(
+                "UPDATE jobs SET status = 'completed', repository = ?, sha = ? WHERE id = ?",
+                (repository, sha, job_id),
+            )
 
     def fail(self, job_id: int, message: str) -> None:
         message = " ".join(message.split())[:240] or "Analysis failed"
