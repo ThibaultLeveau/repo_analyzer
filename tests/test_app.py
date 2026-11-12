@@ -10,16 +10,18 @@ def test_independent_apps_serve_health_offline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.chdir(tmp_path)
-    tmp_path.chmod(0o555)
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    project.chmod(0o555)
     try:
-        first, second = create_app(), create_app()
+        first, second = (create_app(data_dir=tmp_path / "data") for _ in range(2))
         assert first is not second
         for app in (first, second):
-            with TestClient(app) as client:
+            with TestClient(app, base_url="http://localhost") as client:
                 response = client.get("/health")
             assert response.status_code == 200
             assert response.json() == {"status": "ok"}
-        assert list(tmp_path.iterdir()) == []
+        assert list(project.iterdir()) == []
     finally:
-        tmp_path.chmod(0o755)
+        project.chmod(0o755)

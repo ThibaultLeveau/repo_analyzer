@@ -161,6 +161,13 @@ class StateStore:
             )
             return [Snapshot(**row) for row in rows]
 
+    def recent_imports(self) -> list[Job]:
+        with self._connection() as db:
+            return [
+                Job(**row)
+                for row in db.execute("SELECT * FROM jobs ORDER BY id DESC LIMIT 20")
+            ]
+
     def start(self, job_id: int) -> None:
         with self._connection(write=True) as db:
             changed = db.execute(

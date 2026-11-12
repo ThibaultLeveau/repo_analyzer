@@ -1,5 +1,9 @@
 {% if fragment %}<title>{{ title }} · RepoPilot</title>{% endif %}
 <div id="workspace" hx-boost="true" hx-target="#workspace" hx-swap="outerHTML">
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('overview') }}"><span class="mark" aria-hidden="true">◇</span>RepoPilot</a>
+    <span class="repo-context">{% if job %}{{ head.full_name if head else job.repository }}{% if job.sha %} · {{ job.sha[:8] }}{% endif %}{% else %}No repository selected{% endif %}</span>
+  </header>
   <nav aria-label="Workspace">
     {% for name, label, icon in [('overview', 'Overview', '▦'), ('setup', 'Local setup', '⌘')] %}
     <a id="nav-{{ name }}" href="{{ url_for(name) }}"{% if title == label %} aria-current="page"{% endif %}>
@@ -10,11 +14,41 @@
   <main id="content" tabindex="-1">
     <h1>{{ title }}</h1>
     {% if title == 'Overview' %}
-    <section class="panel empty" aria-labelledby="empty-title">
-      <div class="folder-art" aria-hidden="true"><i></i></div>
-      <h2 id="empty-title">No repositories yet</h2>
-      <p>Your analyzed repositories will appear here.</p>
-      <a class="button" href="{{ url_for('setup') }}">View local setup <span aria-hidden="true">↗</span></a>
+    <section class="panel guide" aria-labelledby="import-title">
+      <h2 id="import-title">Import a repository</h2>
+      <form action="{{ url_for('submit_import') }}" method="post" hx-boost="false">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <label for="repo-url">Public GitHub URL</label>
+        <div class="form-row">
+          <input id="repo-url" name="url" type="url" value="{{ url|default('') }}" placeholder="https://github.com/owner/repository" required maxlength="2048">
+          <button class="button" type="submit">Import repository</button>
+        </div>
+        {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+      </form>
+    </section>
+    <section class="panel guide history">
+      <h2>{{ 'Recent imports' if jobs else 'No repositories yet' }}</h2>
+      {% if jobs %}<ul>{% for item in jobs %}
+        <li><a href="{{ url_for('import_status', job_id=item.id) }}">{{ item.repository }}</a> <small>{{ item.status }}{% if item.sha %} · {{ item.sha[:8] }}{% endif %}</small></li>
+      {% endfor %}</ul>{% else %}<p>Import a public repository to browse a snapshot of its source.</p>{% endif %}
+      <a href="{{ url_for('setup') }}">View local setup</a>
+    </section>
+    {% elif job %}
+    <section class="panel guide" aria-live="polite"
+      {% if job.status in ['queued', 'running'] %}hx-get="{{ url_for('import_status', job_id=job.id) }}" hx-trigger="load delay:750ms"{% endif %}>
+      <h2>{{ head.full_name if head else job.repository }}</h2>
+      {% if job.status == 'completed' %}
+        <p>Import complete · <code title="{{ job.sha }}">{{ job.sha[:8] }}</code></p>
+      {% elif job.status == 'failed' %}
+        <p role="alert">{{ job.error }}</p>
+        <form action="{{ url_for('retry_import', job_id=job.id) }}" method="post" hx-boost="false">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <button type="submit" class="button">Retry import</button>
+        </form>
+      {% else %}
+        <p>{{ 'Queued' if job.status == 'queued' else stage }}</p>
+        <a id="refresh-status" href="{{ url_for('import_status', job_id=job.id) }}">Refresh status</a>
+      {% endif %}
     </section>
     {% else %}
     <section class="panel guide" aria-labelledby="server-title">
