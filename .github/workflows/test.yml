@@ -1,0 +1,38 @@
+name: Python checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Python 3.12 on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install development dependencies
+        run: python -m pip install ".[dev]"
+      - name: Run tests
+        run: python -m pytest -v
+      - name: Lint with Ruff
+        if: runner.os == 'Linux'
+        run: python -m ruff check .
+      - name: Type-check with mypy
+        if: runner.os == 'Linux'
+        run: python -m mypy
+      - name: Scan with Bandit
+        if: runner.os == 'Linux'
+        run: python -m bandit -r src
