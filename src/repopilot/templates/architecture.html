@@ -1,0 +1,45 @@
+{% macro package_tree(node) -%}
+<ul>
+  {% for name, child in node.directories.items() %}
+    <li><details open><summary>{{ name }}</summary>{{ package_tree(child) }}</details></li>
+  {% endfor %}
+  {% for role in node.files %}
+    <li><a href="{{ architecture_url.include_query_params(path=role.path) }}"{% if role.path == selected.path %} aria-current="page"{% endif %}>{{ role.path.rsplit('/', 1)[-1] }}</a></li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+{% if notice == 'ok' %}<p role="status">Module descriptions updated.</p>
+{% elif notice == 'missing_key' %}<p role="status">Set OPENAI_API_KEY to generate descriptions. Static descriptions are available below.</p>
+{% elif notice in ['provider_error', 'timeout', 'invalid_response', 'insufficient_evidence'] %}<p role="status">No new descriptions were available. Existing descriptions are shown below.</p>{% endif %}
+{% if selected %}
+<div class="architecture">
+  <aside class="panel file-tree" aria-label="Package tree">
+    <h2>Package tree</h2>{{ package_tree(tree) }}
+  </aside>
+  <section class="panel module-roles" aria-labelledby="roles-title">
+    <h2 id="roles-title">Module roles</h2>
+    {% for role in roles %}<article>
+      <h3><a href="{{ architecture_url.include_query_params(path=role.path) }}">{{ role.module }}</a></h3>
+      <p>{{ role.description }}</p>
+    </article>{% endfor %}
+    <form action="{{ generate_url }}" method="post" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="path" value="{{ selected.path }}">
+      <button type="submit" class="button">Generate descriptions for these modules</button>
+    </form>
+  </section>
+  <section class="panel role-evidence" aria-label="Module evidence">
+    <h2>Evidence</h2>
+    <h3>{{ selected.module }}</h3>
+    <p>{{ 'Model description' if selected.generated else 'Static description' }}</p>
+    {% for source in sources %}
+      <a href="{{ source.url }}" hx-boost="false">{{ source.span.path }} · L{{ source.span.start }}–{{ source.span.end }}</a>
+      <pre><code>{{ source.excerpt|truncate(600, true, '…') }}</code></pre>
+    {% else %}<a href="{{ explorer_url.include_query_params(path=selected.path) }}">Open empty source file</a>{% endfor %}
+    <small>Commit <code>{{ sha }}</code></small>
+  </section>
+</div>
+{% else %}<p>No readable Python modules in this snapshot.</p>{% endif %}
+{% if diagnostics %}<details class="panel guide"><summary>Analysis diagnostics ({{ diagnostics|length }})</summary>
+  <ul>{% for item in diagnostics %}<li><a href="{{ explorer_url.include_query_params(path=item.path) }}">{{ item.path }}</a> · {{ item.message }}</li>{% endfor %}</ul>
+</details>{% endif %}

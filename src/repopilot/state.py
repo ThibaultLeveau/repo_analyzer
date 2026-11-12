@@ -1,3 +1,4 @@
+import json
 import re
 import sqlite3
 from collections.abc import Iterator
@@ -40,6 +41,11 @@ CREATE TABLE IF NOT EXISTS import_sources (
     default_branch TEXT NOT NULL,
     sha TEXT NOT NULL,
     fetched INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS module_roles (
+    repository TEXT COLLATE NOCASE, sha TEXT, model TEXT, path TEXT,
+    description TEXT NOT NULL, ranges TEXT NOT NULL,
+    PRIMARY KEY (repository, sha, model, path)
 );
 CREATE TRIGGER IF NOT EXISTS job_transition_time AFTER UPDATE OF status ON jobs
 BEGIN
@@ -160,6 +166,35 @@ class StateStore:
                 (repository,),
             )
             return [Snapshot(**row) for row in rows]
+
+    def module_roles(
+        self, repository: str, sha: str, model: str
+    ) -> dict[str, tuple[str, list[tuple[int, int]]]]:
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT path, description, ranges FROM module_roles WHERE repository=? AND sha=? AND model=?",
+                (repository, sha, model),
+            )
+            return {
+                path: (description, json.loads(ranges))
+                for path, description, ranges in rows
+            }
+
+    def save_module_roles(
+        self,
+        repository: str,
+        sha: str,
+        model: str,
+        roles: dict[str, tuple[str, list[tuple[int, int]]]],
+    ) -> None:
+        with self._connection(write=True) as db:
+            db.executemany(
+                "INSERT OR REPLACE INTO module_roles VALUES (?,?,?,?,?,?)",
+                (
+                    (repository, sha, model, path, description, json.dumps(ranges))
+                    for path, (description, ranges) in roles.items()
+                ),
+            )
 
     def recent_imports(self) -> list[Job]:
         with self._connection() as db:

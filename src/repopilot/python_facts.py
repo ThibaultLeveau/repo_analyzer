@@ -44,6 +44,7 @@ class Module:
     docstring: str | None
     symbols: tuple[Symbol, ...]
     imports: tuple[ImportFact, ...]
+    doc_span: Span | None = None
 
 
 @dataclass(frozen=True)
@@ -227,6 +228,13 @@ def analyze_python(snapshot: SourceSnapshot) -> PythonFacts:
                 ast.get_docstring(tree),
                 tuple(visitor.symbols),
                 tuple(visitor.imports),
+                Span(
+                    entry.path,
+                    tree.body[0].lineno,
+                    tree.body[0].end_lineno or tree.body[0].lineno,
+                )
+                if ast.get_docstring(tree)
+                else None,
             )
         )
     return PythonFacts(tuple(modules), tuple(sorted(packages)), tuple(diagnostics))
