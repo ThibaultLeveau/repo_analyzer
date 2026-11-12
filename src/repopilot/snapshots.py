@@ -68,6 +68,10 @@ class SourceSnapshot:
             raise SnapshotError(f"Cannot display {kind} entry")
         return content
 
+    def lines(self, path: str) -> list[str]:
+        text = self.read_text(path).replace("\r\n", "\n").replace("\r", "\n")
+        return text.removesuffix("\n").split("\n") if text else []
+
 
 def _parts(name: str) -> list[str]:
     parts = name.removesuffix("/").split("/")
