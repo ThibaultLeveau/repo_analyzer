@@ -2,6 +2,7 @@ import os
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
@@ -13,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from repopilot.architecture import GROUP_SIZE, Architecture, PackageTree
+from repopilot.dependencies import DependencyReport, analyze_dependencies
 from repopilot.explorer import PAGE_LINES, browse
 from repopilot.github import GitHubError
 from repopilot.grounding import StructuredModel
@@ -131,6 +133,38 @@ def create_app(
     @app.get("/setup", response_class=HTMLResponse)
     def setup(request: Request) -> HTMLResponse:
         return page(request, "Local setup")
+
+    @lru_cache(maxsize=4)
+    def dependency_report(repository: str, sha: str) -> DependencyReport:
+        return analyze_dependencies(engine.cache.open(repository, sha))
+
+    @app.get("/repos/{owner}/{repo}/{sha}/dependencies", response_class=HTMLResponse)
+    def dependencies(
+        request: Request, owner: str, repo: str, sha: str, package: str = ""
+    ) -> HTMLResponse:
+        repository = f"{owner}/{repo}"
+        try:
+            report = dependency_report(repository, sha)
+        except (FileNotFoundError, GitHubError, SnapshotError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        if package and package not in report.packages:
+            raise HTTPException(404, "Dependency not found")
+        selected = (
+            report.packages.get(package)
+            if package
+            else next(iter(report.packages.values()), None)
+        )
+        paths = {"owner": owner, "repo": repo, "sha": sha}
+        return page(
+            request,
+            "Dependencies",
+            repository=repository,
+            sha=sha,
+            report=report,
+            selected=selected,
+            explorer_url=request.url_for("explorer", **paths),
+            dependencies_url=request.url_for("dependencies", **paths),
+        )
 
     @app.get("/repos/{owner}/{repo}/{sha}/architecture", response_class=HTMLResponse)
     def architecture_view(

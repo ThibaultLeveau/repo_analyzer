@@ -13,6 +13,7 @@
     {% if repository and sha %}
       {% set owner, repo = repository.split('/') %}
       <a href="{{ url_for('architecture_view', owner=owner, repo=repo, sha=sha) }}"{% if title == 'Architecture' %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">⊞</span>Architecture</a>
+      <a href="{{ url_for('dependencies', owner=owner, repo=repo, sha=sha) }}"{% if title == 'Dependencies' %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">↳</span>Dependencies</a>
     {% endif %}
     {% if explorer_url %}<a href="{{ explorer_url }}"{% if title == 'Code Explorer' %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">⌗</span>Code Explorer</a>{% endif %}
   </nav>
@@ -47,6 +48,7 @@
         {% set owner, repo = job.repository.split('/') %}
         <a class="button" href="{{ url_for('explorer', owner=owner, repo=repo, sha=job.sha) }}">Browse source</a>
         <a class="button" href="{{ url_for('architecture_view', owner=owner, repo=repo, sha=job.sha) }}">View architecture</a>
+        <a class="button" href="{{ url_for('dependencies', owner=owner, repo=repo, sha=job.sha) }}">View dependencies</a>
       {% elif job.status == 'failed' %}
         <p role="alert">{{ job.error }}</p>
         <form action="{{ url_for('retry_import', job_id=job.id) }}" method="post" hx-boost="false">
@@ -62,6 +64,8 @@
       {% include "explorer.html" %}
     {% elif title == 'Architecture' %}
       {% include "architecture.html" %}
+    {% elif title == 'Dependencies' %}
+      {% include "dependencies.html" %}
     {% else %}
     <section class="panel guide" aria-labelledby="server-title">
       <h2 id="server-title">Development server</h2>

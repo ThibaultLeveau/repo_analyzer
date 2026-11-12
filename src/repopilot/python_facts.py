@@ -34,6 +34,7 @@ class ImportFact:
     target: str | None
     kind: Literal["local", "stdlib", "external", "unresolved"]
     span: Span
+    dynamic: bool = False
 
 
 @dataclass(frozen=True)
@@ -137,12 +138,16 @@ class _Visitor(ast.NodeVisitor):
     def visit_Assign(self, node: ast.Assign) -> None:
         for target in node.targets:
             self._assignment(target, node)
+        self.visit(node.value)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         self._assignment(node.target, node)
+        if node.value:
+            self.visit(node.value)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
         self._assignment(node.target, node)
+        self.visit(node.value)
 
     def _import(self, node: ast.Import | ast.ImportFrom, item: ast.alias) -> ImportFact:
         name = None
@@ -178,6 +183,37 @@ class _Visitor(ast.NodeVisitor):
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         self.imports.extend(self._import(node, item) for item in node.names)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        func = node.func
+        literal_import = (isinstance(func, ast.Name) and func.id == "__import__") or (
+            isinstance(func, ast.Attribute)
+            and func.attr == "import_module"
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "importlib"
+        )
+        if literal_import and node.args and isinstance(node.args[0], ast.Constant):
+            name = node.args[0].value
+            if isinstance(name, str) and all(
+                part.isidentifier() for part in name.split(".")
+            ):
+                root = name.split(".")[0]
+                if root not in self.known and root not in sys.stdlib_module_names:
+                    self.imports.append(
+                        ImportFact(
+                            self.scope,
+                            name,
+                            None,
+                            None,
+                            name,
+                            "external",
+                            Span(
+                                self.path, node.lineno, node.end_lineno or node.lineno
+                            ),
+                            dynamic=True,
+                        )
+                    )
+        self.generic_visit(node)
 
 
 def analyze_python(snapshot: SourceSnapshot) -> PythonFacts:

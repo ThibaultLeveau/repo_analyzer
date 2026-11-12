@@ -1,0 +1,42 @@
+{% macro cite(span, label) -%}
+  <a hx-boost="false" href="{{ explorer_url.include_query_params(path=span.path, line=span.start, end=span.end) }}#L{{ span.start }}">{{ label }}</a>
+{%- endmacro %}
+<div class="architecture">
+  <aside class="panel file-tree" aria-label="Dependency manifests">
+    <h2>Manifests</h2>
+    {% for path in report.manifests.paths %}
+      <details open><summary>{{ path }}</summary>
+      {% set declarations = report.manifests.declarations|selectattr('span.path', 'equalto', path)|list %}
+      {% for group, items in declarations|groupby('group') %}
+        <h3>{{ group }}</h3><ul>{% for item in items %}<li>
+          <a href="{{ dependencies_url.include_query_params(package=item.name) }}">{{ item.name }} {{ item.constraint }}</a>
+        </li>{% endfor %}</ul>
+      {% else %}<p>No static declarations.</p>{% endfor %}
+      </details>
+    {% else %}<p>No dependency manifests found.</p>{% endfor %}
+  </aside>
+  <section class="panel module-roles" aria-label="Packages">
+    <h2>Packages</h2>
+    {% for pkg in report.packages.values() %}<article>
+      <h3><a href="{{ dependencies_url.include_query_params(package=pkg.name) }}"{% if selected == pkg %} aria-current="page"{% endif %}>{{ pkg.name }}</a></h3>
+      <p>{{ pkg.observation }} · {{ pkg.files }} importing {{ 'file' if pkg.files == 1 else 'files' }}</p>
+    </article>{% else %}<p>No third-party packages identified.</p>{% endfor %}
+  </section>
+  <section class="panel role-evidence" aria-label="Import evidence">
+    <h2>Import evidence</h2>
+    {% if selected %}<h3>{{ selected.name }}</h3>
+      {% for declaration in selected.declarations %}<p>
+        {{ cite(declaration.span, declaration.group ~ ' · ' ~ declaration.span.path ~ ':' ~ declaration.span.start) }}
+        <code>{{ declaration.source }}</code>
+      </p>{% endfor %}
+      {% for use in selected.uses %}<article>
+        {{ cite(use.fact.span, use.fact.span.path ~ ' · L' ~ use.fact.span.start) }}
+        <p><code>{{ use.fact.scope }}</code> uses <code>{{ use.fact.module }}{% if use.fact.name %} → {{ use.fact.name }}{% endif %}</code>.
+        {% if use.is_test %}Test code.{% endif %} {% if use.fact.dynamic %}Literal dynamic import.{% endif %}
+        {% if use.candidates %}Possible providers: {{ use.candidates|join(', ') }}.{% endif %}</p>
+      </article>{% else %}<p>No matching imports in this snapshot. Plugins or runtime loading can still use this package.</p>{% endfor %}
+    {% endif %}
+  </section>
+</div>
+{% if report.manifests.diagnostics %}<details class="panel guide"><summary>Manifest diagnostics ({{ report.manifests.diagnostics|length }})</summary>
+  <ul>{% for item in report.manifests.diagnostics %}<li>{{ item.path }}{% if item.line %}:{{ item.line }}{% endif %} · {{ item.message }}</li>{% endfor %}</ul></details>{% endif %}
