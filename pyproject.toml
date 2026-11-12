@@ -8,12 +8,16 @@ version = "0.1.0"
 description = "A local web application for understanding source repositories"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["fastapi>=0.115,<1", "jinja2>=3.1.6,<4", "uvicorn>=0.30,<1"]
+dependencies = [
+    "fastapi>=0.115,<1",
+    "httpx2>=2,<3",
+    "jinja2>=3.1.6,<4",
+    "uvicorn>=0.30,<1",
+]
 
 [project.optional-dependencies]
 dev = [
     "bandit>=1.8,<2",
-    "httpx2>=2,<3",
     "mypy>=1.15,<3",
     "pytest>=8,<10",
     "pytest-playwright>=0.7,<1",
