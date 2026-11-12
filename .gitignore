@@ -14,3 +14,4 @@ htmlcov/
 .env.*
 !.env.example
 .repopilot/
+test-results/
