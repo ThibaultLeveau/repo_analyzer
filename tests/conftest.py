@@ -24,6 +24,8 @@ def explorer_url(tmp_path: Path) -> str:
                 "demo/src/demo.py", f'# {marker}\r\nmsg = "<tag>"\n' + "\n" * 199
             )
             writer.writestr("demo/A & B.txt", "")
+            writer.writestr("demo/tests/check.py", "import yaml\n")
+            writer.writestr("demo/requirements.txt", "PyYAML>=6\n")
             writer.writestr("demo/bin.dat", b"\0")
             writer.writestr("demo/large.log", "x" * 4097)
         with httpx2.Client(transport=archive_transport(archive.getvalue())) as client:

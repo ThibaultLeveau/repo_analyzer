@@ -1,6 +1,20 @@
 from playwright.sync_api import Page, expect
 
 
+def test_select_dependency_and_open_import(
+    page: Page, app_url: str, explorer_url: str
+) -> None:
+    page.goto(app_url + explorer_url)
+    page.get_by_role("link", name="Dependencies", exact=True).click()
+    packages = page.get_by_role("region", name="Packages", exact=True)
+    packages.get_by_role("link", name="pyyaml", exact=True).click()
+    expect(packages).to_contain_text("1 importing file")
+    panel = page.get_by_role("region", name="Import evidence")
+    panel.get_by_role("link", name="tests/check.py · L1").click()
+    expect(page.locator("#L1:target")).to_contain_text("import yaml")
+    assert explorer_url in page.url
+
+
 def test_select_module_and_open_its_evidence(
     page: Page, app_url: str, explorer_url: str
 ) -> None:
