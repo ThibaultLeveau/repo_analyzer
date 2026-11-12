@@ -25,6 +25,17 @@ Run the development server and visit `http://127.0.0.1:8000/health`.
 python -m uvicorn repopilot.app:create_app --factory
 ```
 
+## AI configuration
+
+Set `OPENAI_API_KEY` in the process environment to enable model-backed analysis.
+Set `REPOPILOT_CHAT_MODEL` to choose an OpenAI model that supports strict
+structured outputs. The default is `gpt-4o-mini`. Repository imports, browsing
+and static analysis work without credentials.
+
+The chat adapter sends the question and selected evidence excerpts to OpenAI.
+RepoPilot builds each citation link from the stored repository, commit, path
+and line range. [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+
 ## Quality checks
 
 GitHub Actions tests Python 3.12 on Windows and Linux for pull requests,

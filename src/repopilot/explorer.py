@@ -32,8 +32,7 @@ def browse(
 
     lines = []
     if selected and selected.kind == "text":
-        text = snapshot.read_text(path).replace("\r\n", "\n").replace("\r", "\n")
-        lines = text.removesuffix("\n").split("\n") if text else []
+        lines = snapshot.lines(path)
     if (end is not None and line is None) or (
         line is not None
         and not 1 <= line <= (end if end is not None else line) <= len(lines)
