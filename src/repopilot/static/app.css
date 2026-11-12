@@ -52,12 +52,30 @@ button { border: 0; cursor: pointer; font: inherit; }
 .history small { color: var(--muted); }
 .repo-context, .guide h2, .history a { overflow-wrap: anywhere; }
 [role="alert"] { color: #ffb8a8; }
+.explorer { display: grid; grid-template-columns: minmax(11rem, 28%) minmax(0, 1fr); gap: 1rem; }
+.file-tree, .source-pane { min-width: 0; padding: 1rem; align-self: start; }
+.file-tree { max-height: 75vh; overflow: auto; }
+.file-tree h2, .breadcrumb { font-size: 1rem; margin-bottom: 1rem; }
+.file-tree ul { list-style: none; padding-left: .85rem; margin: 0; }
+.file-tree > ul { padding: 0; }
+.file-tree summary, .file-tree li > a { padding: .14rem .3rem; cursor: pointer; overflow-wrap: anywhere; }
+.file-tree li > a { display: block; color: var(--muted); }
+.file-tree a[aria-current], .source-line:target, .source-line.selected { background: #193a40; color: var(--text); }
+.breadcrumb { overflow-wrap: anywhere; font-family: monospace; font-weight: 500; }
+.breadcrumb span, .line-paging { color: var(--muted); }
+.source-lines { overflow: auto; max-height: 70vh; padding: .5rem 0; background: var(--bg); border-radius: .35rem; }
+.source-line { display: flex; width: max-content; min-width: 100%; white-space: pre; }
+.source-line > a { min-width: 3.4rem; margin-right: .85rem; padding-inline: .5rem; text-align: right; color: var(--muted); font: inherit; font-variant-numeric: tabular-nums; }
+.source-line code { tab-size: 4; padding-right: .7rem; }
+.line-paging { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: .7rem; font-size: .85rem; }
 .button { display: inline-flex; align-items: center; gap: .8rem; padding: .55rem 1rem; background: var(--accent); color: #072327; border-radius: .35rem; font-weight: 650; }
 .button:hover { background: #abf3f2; }
 .guide { padding: clamp(1rem, 3vw, 2.5rem); }
 pre, code, kbd { font-family: "Cascadia Code", Consolas, monospace; }
 pre { max-width: 100%; overflow-x: auto; padding: 1rem; background: var(--bg); border: 1px solid var(--line); border-radius: .35rem; color: var(--accent); }
 @media (max-width: 46rem) {
+  .explorer { grid-template-columns: minmax(0, 1fr); }
+  .file-tree { max-height: 14rem; }
   .topbar { padding-inline: 1rem; gap: .8rem; }
   .repo-context { padding-left: .8rem; }
   #workspace { display: block; }

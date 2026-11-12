@@ -2,7 +2,7 @@
 <div id="workspace" hx-boost="true" hx-target="#workspace" hx-swap="outerHTML">
   <header class="topbar">
     <a class="brand" href="{{ url_for('overview') }}"><span class="mark" aria-hidden="true">◇</span>RepoPilot</a>
-    <span class="repo-context">{% if job %}{{ head.full_name if head else job.repository }}{% if job.sha %} · {{ job.sha[:8] }}{% endif %}{% else %}No repository selected{% endif %}</span>
+    <span class="repo-context">{% if repository %}{{ repository }} · {{ sha[:8] }}{% elif job %}{{ head.full_name if head else job.repository }}{% if job.sha %} · {{ job.sha[:8] }}{% endif %}{% else %}No repository selected{% endif %}</span>
   </header>
   <nav aria-label="Workspace">
     {% for name, label, icon in [('overview', 'Overview', '▦'), ('setup', 'Local setup', '⌘')] %}
@@ -10,6 +10,7 @@
       <span class="nav-icon" aria-hidden="true">{{ icon }}</span>{{ label }}
     </a>
     {% endfor %}
+    {% if explorer_url %}<a href="{{ explorer_url }}" aria-current="page"><span class="nav-icon" aria-hidden="true">⌗</span>Code Explorer</a>{% endif %}
   </nav>
   <main id="content" tabindex="-1">
     <h1>{{ title }}</h1>
@@ -39,6 +40,8 @@
       <h2>{{ head.full_name if head else job.repository }}</h2>
       {% if job.status == 'completed' %}
         <p>Import complete · <code title="{{ job.sha }}">{{ job.sha[:8] }}</code></p>
+        {% set owner, repo = job.repository.split('/') %}
+        <a class="button" href="{{ url_for('explorer', owner=owner, repo=repo, sha=job.sha) }}">Browse source</a>
       {% elif job.status == 'failed' %}
         <p role="alert">{{ job.error }}</p>
         <form action="{{ url_for('retry_import', job_id=job.id) }}" method="post" hx-boost="false">
@@ -50,6 +53,8 @@
         <a id="refresh-status" href="{{ url_for('import_status', job_id=job.id) }}">Refresh status</a>
       {% endif %}
     </section>
+    {% elif title == 'Code Explorer' %}
+      {% include "explorer.html" %}
     {% else %}
     <section class="panel guide" aria-labelledby="server-title">
       <h2 id="server-title">Development server</h2>

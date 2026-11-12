@@ -1,0 +1,44 @@
+{% macro tree(parent) -%}
+<ul>
+  {% for entry in view.children.get(parent, []) %}
+    {% set name = entry.path.rsplit('/', 1)[-1] %}
+    <li>{% if entry.kind == 'directory' %}
+      <details{% if path == entry.path or path.startswith(entry.path ~ '/') %} open{% endif %}>
+        <summary>{{ name }}</summary>{{ tree(entry.path) }}
+      </details>
+    {% else %}
+      <a href="{{ explorer_url.include_query_params(path=entry.path) }}"{% if path == entry.path %} aria-current="page"{% endif %}>{{ name }}</a>
+    {% endif %}</li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+{% if error %}
+  <p role="alert">{{ error }}</p>
+  {% if explorer_url %}<a href="{{ explorer_url }}">Back to tree</a>{% endif %}
+{% else %}
+<div class="explorer">
+  <aside class="panel file-tree" aria-label="File tree">
+    <h2>Files</h2>{{ tree('') }}
+  </aside>
+  <section class="panel source-pane" aria-label="Source">
+    {% if not view.selected %}<p>Select a file from the tree.</p>
+    {% else %}
+      <h2 class="breadcrumb"><span>{{ repository }}</span> / {{ path|replace('/', ' / ') }}</h2>
+      {% if view.selected.kind == 'text' and view.total %}
+        {% set file_url = explorer_url.include_query_params(path=path) %}
+        <div class="source-lines" hx-boost="false">{% for code in view.lines %}
+          {% set n = view.first_line + loop.index0 %}
+          <div id="L{{ n }}" class="source-line{% if line and line <= n <= (end or line) %} selected{% endif %}"><a href="{{ file_url.include_query_params(line=n) }}#L{{ n }}" aria-label="Line {{ n }}">{{ n }}</a><code>{{ code }}</code></div>
+        {% endfor %}</div>
+        {% if view.total > page_lines %}<div class="line-paging">
+          {% if view.first_line > 1 %}<a href="{{ file_url.include_query_params(line=view.first_line-page_lines) }}">Previous lines</a>{% endif %}
+          <span>Lines {{ view.first_line }}–{{ view.first_line + view.lines|length - 1 }} of {{ view.total }}</span>
+          {% if view.first_line + page_lines <= view.total %}<a href="{{ file_url.include_query_params(line=view.first_line+page_lines) }}">Next lines</a>{% endif %}
+        </div>{% endif %}
+      {% else %}
+        <p>{{ {'text': 'This file is empty.', 'binary': 'Binary file. Text preview is unavailable.', 'oversized': 'This file exceeds the text preview limit.', 'special': 'Special entry. Text preview is unavailable.', 'directory': 'Select a file in this directory.'}[view.selected.kind] }}</p>
+      {% endif %}
+    {% endif %}
+  </section>
+</div>
+{% endif %}
