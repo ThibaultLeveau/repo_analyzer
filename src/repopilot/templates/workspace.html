@@ -1,0 +1,28 @@
+{% if fragment %}<title>{{ title }} · RepoPilot</title>{% endif %}
+<div id="workspace" hx-boost="true" hx-target="#workspace" hx-swap="outerHTML">
+  <nav aria-label="Workspace">
+    {% for name, label, icon in [('overview', 'Overview', '▦'), ('setup', 'Local setup', '⌘')] %}
+    <a id="nav-{{ name }}" href="{{ url_for(name) }}"{% if title == label %} aria-current="page"{% endif %}>
+      <span class="nav-icon" aria-hidden="true">{{ icon }}</span>{{ label }}
+    </a>
+    {% endfor %}
+  </nav>
+  <main id="content" tabindex="-1">
+    <h1>{{ title }}</h1>
+    {% if title == 'Overview' %}
+    <section class="panel empty" aria-labelledby="empty-title">
+      <div class="folder-art" aria-hidden="true"><i></i></div>
+      <h2 id="empty-title">No repositories yet</h2>
+      <p>Your analyzed repositories will appear here.</p>
+      <a class="button" href="{{ url_for('setup') }}">View local setup <span aria-hidden="true">↗</span></a>
+    </section>
+    {% else %}
+    <section class="panel guide" aria-labelledby="server-title">
+      <h2 id="server-title">Development server</h2>
+      <p>From the project directory, activate your Python environment and run</p>
+      <pre><code>python -m uvicorn repopilot.app:create_app --factory</code></pre>
+      <p>Open <code>http://127.0.0.1:8000</code> in your browser. Press <kbd>Ctrl</kbd> + <kbd>C</kbd> in the terminal to stop the server.</p>
+    </section>
+    {% endif %}
+  </main>
+</div>

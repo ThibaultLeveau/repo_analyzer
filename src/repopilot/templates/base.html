@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{ title }} · RepoPilot</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <script defer src="{{ url_for('static', path='vendor/htmx-2.0.11.min.js') }}"></script>
+</head>
+<body>
+  <a class="skip" href="#content">Skip to content</a>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('overview') }}"><span class="mark" aria-hidden="true">◇</span>RepoPilot</a>
+    <span class="repo-context">No repository selected</span>
+  </header>
+  {% include "workspace.html" %}
+</body>
+</html>
