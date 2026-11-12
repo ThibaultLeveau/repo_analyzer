@@ -24,3 +24,15 @@ Run the development server and visit `http://127.0.0.1:8000/health`.
 ```sh
 python -m uvicorn repopilot.app:create_app --factory
 ```
+
+## Quality checks
+
+GitHub Actions tests Python 3.12 on Windows and Linux for pull requests,
+pushes to `main` and `v*` tags. Run the same checks in the development environment.
+
+```sh
+python -m pytest -v
+python -m ruff check .
+python -m mypy
+python -m bandit -r src
+```
