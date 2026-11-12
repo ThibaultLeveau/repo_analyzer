@@ -12,8 +12,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from repopilot.explorer import PAGE_LINES, browse
 from repopilot.github import GitHubError
 from repopilot.imports import ImportService, import_service
+from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
 
 
@@ -122,6 +124,55 @@ def create_app(
     @app.get("/setup", response_class=HTMLResponse)
     def setup(request: Request) -> HTMLResponse:
         return page(request, "Local setup")
+
+    @app.get("/repos/{owner}/{repo}/{sha}/code", response_class=HTMLResponse)
+    def explorer(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        path: str = "",
+        line: int | None = None,
+        end: int | None = None,
+    ) -> HTMLResponse:
+        repository = f"{owner}/{repo}"
+        url = request.url_for("explorer", owner=owner, repo=repo, sha=sha)
+        try:
+            snapshot = engine.cache.open(repository, sha)
+        except (FileNotFoundError, SnapshotError, GitHubError):
+            return page(
+                request, "Code Explorer", error="Snapshot not found.", status_code=404
+            )
+        try:
+            view = browse(snapshot, path, line, end)
+        except FileNotFoundError:
+            return page(
+                request,
+                "Code Explorer",
+                error="File not found in this snapshot.",
+                explorer_url=url,
+                status_code=404,
+            )
+        except ValueError as exc:
+            return page(
+                request,
+                "Code Explorer",
+                error=str(exc),
+                explorer_url=url,
+                status_code=422,
+            )
+        return page(
+            request,
+            "Code Explorer",
+            repository=repository,
+            sha=sha,
+            explorer_url=url,
+            view=view,
+            path=path,
+            line=line,
+            end=end,
+            page_lines=PAGE_LINES,
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:
