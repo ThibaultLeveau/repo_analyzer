@@ -4,8 +4,10 @@
 
 1. Import a public repository and open **Browse source**. Expand a directory
    and select a file. Click a symbol to open its definition.
-2. Use **Search this snapshot** to look up a filename, symbol or snippet. To
-   add semantic matches, select **Build semantic index** on the search page.
+2. Press **Ctrl+K** (or **⌘K**) to search files, symbols, source text, cached
+   issues and known commits. To add semantic matches, select **Build semantic
+   index** on the search page. The repository selector in the header switches
+   between imported snapshots and shows the branch when known.
 3. In the explorer, enter a **Question about this commit** and select **Ask**.
    A supported answer includes an excerpt for each claim. Select **Open cited
    lines** to inspect the original file and line range at the same commit.
@@ -72,6 +74,16 @@ exact pin or minor-series wildcard, falling back to `stable`.
 from project files. Follow the evidence link before using a command. A command
 marked unverified has not been executed by RepoPilot. **Download Markdown**
 saves the guide for this commit.
+
+Select a **Guide language** and choose **Show guide** to translate the prose.
+Commands and source links stay intact. Expand **Original English guide** to
+compare versions, or choose **Download Markdown** to save the selected version.
+
+Drop a Markdown file into **Project notes** or choose it with the file input.
+Open the note to inspect its headings, replace it, remove it or download the
+original file. In the explorer, ask “What do my notes say about dispatch?” to
+search current revisions. Each saved answer cites the revision used at the
+time of the question.
 
 ## Triage open issues
 
