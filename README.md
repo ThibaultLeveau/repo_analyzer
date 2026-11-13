@@ -2,6 +2,10 @@
 
 RepoPilot is a local web application for understanding source repositories.
 
+Read the [user manual](docs/index.md) for a guided walkthrough, issue triage and
+CLI report examples. To browse the themed manual locally, install
+`python -m pip install -e ".[docs]"` and run `python -m mkdocs serve --dev-addr 127.0.0.1:8001`.
+
 ## Quickstart
 
 Install Python 3.12 or later, download or clone this repository, then run

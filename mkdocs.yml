@@ -1,0 +1,21 @@
+site_name: RepoPilot
+site_description: Explore, question and review a public repository on your own machine.
+site_dir: build/docs
+repo_url: https://github.com/ThibaultLeveau/repo_analyzer
+repo_name: ThibaultLeveau/repo_analyzer
+theme:
+  name: material
+  language: en
+  font: false
+  palette:
+    scheme: slate
+  features:
+    - navigation.top
+plugins:
+  - search
+extra_css:
+  - stylesheets/manual.css
+nav:
+  - Quickstart: index.md
+  - Explore a repository: explore.md
+  - Reports and CLI: reports.md
