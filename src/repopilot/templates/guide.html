@@ -8,6 +8,7 @@
     <button class="button" type="submit">Generate cited notes</button>
   </form>
 </div>
+{% include "user_notes.html" %}
 {% if notice == "ok" %}<p role="status">Cited notes saved for this commit.</p>
 {% elif notice == "missing_key" %}<p role="status">Set OPENAI_API_KEY to generate notes. The source-based guide is available below.</p>
 {% elif notice %}<p role="status">No new cited notes were available. The source-based guide is available below.</p>{% endif %}

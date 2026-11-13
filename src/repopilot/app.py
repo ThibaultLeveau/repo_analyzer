@@ -8,9 +8,10 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
+from urllib.parse import quote
 
 import httpx2
-from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
@@ -43,6 +44,7 @@ from repopilot.search import QUERY_LIMIT
 from repopilot.snapshots import SnapshotError
 from repopilot.specialists import explain as explain_findings
 from repopilot.state import Job, JobStateError
+from repopilot.user_notes import MAX_BYTES, NoteError, Notes, RevisionConflict
 
 if TYPE_CHECKING:
     from repopilot.ask import Ask
@@ -66,6 +68,7 @@ def create_app(
     issue_pages: IssuePages
     histories: History
     official_docs: OfficialDocs
+    notes: Notes
     scores: Scores
     sampler: ResourceSampler
     csrf = secrets.token_urlsafe(32)
@@ -73,7 +76,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nonlocal engine, architecture, guides, issue_pages, scores, sampler, histories
-        nonlocal official_docs
+        nonlocal official_docs, notes
         with import_service(
             directory, transport=transport, model=model, embedder=embedder, clock=clock
         ) as engine:
@@ -82,6 +85,7 @@ def create_app(
             issue_pages = IssuePages(directory, engine.client, clock)
             histories = History(directory, engine.client, clock)
             official_docs = OfficialDocs(directory, clock)
+            notes = Notes(directory, clock)
             scores = Scores(directory)
             sampler = ResourceSampler(directory, clock)
             stop = threading.Event()
@@ -866,20 +870,103 @@ def create_app(
 
     @app.get(guide_path, response_class=HTMLResponse)
     def getting_started(
-        request: Request, owner: str, repo: str, sha: str, notice: str = ""
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        notice: str = "",
+        note: str = "",
+        revision: str = "",
     ) -> HTMLResponse:
         guide = snapshot_guide(owner, repo, sha)
         paths = {"owner": owner, "repo": repo, "sha": sha}
+        project_notes = notes.for_project(guide.repository)
+        try:
+            preview = notes.read(guide.repository, note, revision) if note else None
+        except KeyError as exc:
+            raise HTTPException(404, "This user note revision is unavailable.") from exc
         return page(
             request,
             "Getting Started",
             repository=guide.repository,
             sha=sha,
             guide=guide,
+            project_notes=project_notes,
+            preview=preview,
+            current_note=next((n for n in project_notes if n.id == note), None),
+            note_action=request.url_for("save_attachment", **paths),
+            remove_action=request.url_for("remove_attachment", **paths),
             notice=notice,
             explorer_url=request.url_for("explorer", **paths),
             download_url=request.url_for("download_guide", **paths),
             generate_url=request.url_for("generate_guide", **paths),
+        )
+
+    @app.post(guide_path + "/attachments", dependencies=[Depends(protect)])
+    def save_attachment(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        file: UploadFile,
+        note_id: Annotated[str, Form()] = "",
+        revision: Annotated[str, Form()] = "",
+    ) -> Response:
+        repository = snapshot_guide(owner, repo, sha).repository
+        try:
+            saved = notes.save(
+                repository,
+                file.filename or "",
+                file.content_type or "application/octet-stream",
+                file.file.read(MAX_BYTES + 1),
+                note_id=note_id,
+                expected=revision,
+            )
+        except NoteError as exc:
+            raise HTTPException(
+                409 if isinstance(exc, RevisionConflict) else 422, str(exc)
+            ) from exc
+        return RedirectResponse(
+            saved.url(repository, sha) + "#user-notes", status_code=303
+        )
+
+    @app.post(guide_path + "/attachments/remove", dependencies=[Depends(protect)])
+    def remove_attachment(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        note_id: Annotated[str, Form()],
+        revision: Annotated[str, Form()],
+    ) -> Response:
+        repository = snapshot_guide(owner, repo, sha).repository
+        try:
+            notes.remove(repository, note_id, revision)
+        except RevisionConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return RedirectResponse(
+            str(request.url_for("getting_started", owner=owner, repo=repo, sha=sha))
+            + "#user-notes",
+            status_code=303,
+        )
+
+    @app.get(guide_path + "/attachments/{note_id}/{revision}")
+    def original_attachment(
+        owner: str, repo: str, sha: str, note_id: str, revision: str
+    ) -> Response:
+        repository = snapshot_guide(owner, repo, sha).repository
+        try:
+            attachment, _ = notes.read(repository, note_id, revision)
+            data = notes.original(repository, note_id, revision)
+        except KeyError as exc:
+            raise HTTPException(404, "This user note revision is unavailable.") from exc
+        return Response(
+            data,
+            media_type="text/markdown",
+            headers={
+                "Content-Disposition": "attachment; filename*=UTF-8''"
+                + quote(attachment.filename, safe="")
+            },
         )
 
     @app.post(guide_path + "/notes", dependencies=[Depends(protect)])
