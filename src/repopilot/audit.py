@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 from typing import Literal
 
 from repopilot.dependencies import DependencyReport
-from repopilot.python_facts import PythonFacts, Span
+from repopilot.python_facts import Module, PythonFacts, Span
 from repopilot.snapshots import SourceSnapshot
 
 
@@ -17,6 +17,8 @@ class Finding:
     limit: str
     span: Span
     distribution: str | None = None
+    category: Literal["quality", "security", "performance", "style"] = "quality"
+    model_note: str = ""
 
     @property
     def key(self) -> str:
@@ -62,6 +64,30 @@ def _coverage(snapshot: SourceSnapshot) -> tuple[int, int] | None:
     return None
 
 
+def style_findings(module: Module) -> list[Finding]:
+    findings = []
+    for symbol in module.symbols:
+        parent, _, name = symbol.name.rpartition(".")
+        if (
+            symbol.kind == "function"
+            and parent == module.name
+            and name.isascii()
+            and any(c.isupper() for c in name)
+        ):
+            findings.append(
+                Finding(
+                    "STYLE001",
+                    "info",
+                    f"Function name {name}",
+                    "This module-level function name contains an uppercase letter.",
+                    "An external API or compatibility requirement may determine the spelling.",
+                    symbol.span,
+                    category="style",
+                )
+            )
+    return findings
+
+
 def analyze_audit(
     snapshot: SourceSnapshot, facts: PythonFacts, deps: DependencyReport
 ) -> Audit:
@@ -94,24 +120,7 @@ def analyze_audit(
                     module.symbols[0].span,
                 )
             )
-        for symbol in module.symbols:
-            parent, _, name = symbol.name.rpartition(".")
-            if (
-                symbol.kind == "function"
-                and parent == module.name
-                and name.isascii()
-                and any(c.isupper() for c in name)
-            ):
-                findings.append(
-                    Finding(
-                        "STYLE001",
-                        "info",
-                        f"Function name {name}",
-                        "This module-level function name contains an uppercase letter.",
-                        "An external API or compatibility requirement may determine the spelling.",
-                        symbol.span,
-                    )
-                )
+        findings.extend(style_findings(module))
     if deps.manifests.paths and not deps.manifests.diagnostics:
         for package in deps.packages.values():
             if package.observation == "Possibly undeclared":

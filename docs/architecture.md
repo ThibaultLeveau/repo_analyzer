@@ -44,6 +44,18 @@ Report export reads saved sections for the specified commit. [Analysis artifacts
 [vector index](https://github.com/ThibaultLeveau/repo_analyzer/blob/main/src/repopilot/vectors.py)
 and [Chroma clients](https://docs.trychroma.com/docs/run-chroma/clients).
 
+## Python audit specialists
+
+| Rule | Observation | Interpretation |
+| --- | --- | --- |
+| SEC001 | A Python logging call receives a name such as `api_key` or an f-string containing that name. | The identifier suggests a credential. The runtime value, logger binding and destination require review. |
+| PERF001 | A loop body calls `re.compile` with one literal pattern. | The source shows a repeated call site. Actual iteration count, cache use and runtime cost are unknown. |
+| STYLE001 | A module-level function uses an uppercase letter in its ASCII name. | The spelling may follow an external API or compatibility requirement. |
+
+Each observation includes its file and line range at the selected commit.
+Optional model explanations receive the static observation and its limits.
+Literal values and source lines are excluded from that request.
+
 ## Retrieval and citation validation
 
 ```mermaid "Question and answer graph"
