@@ -23,6 +23,7 @@ from repopilot.grounding import StructuredModel, grounded_answer
 from repopilot.guide import Guide, Guides
 from repopilot.imports import ImportService, import_service
 from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
+from repopilot.module_graph import arrow
 from repopilot.references import ReferenceIndex
 from repopilot.search import QUERY_LIMIT, LexicalSearch
 from repopilot.snapshots import SnapshotError
@@ -338,6 +339,7 @@ def create_app(
         sha: str,
         path: str = "",
         notice: str = "",
+        graph_page: int = 1,
     ) -> HTMLResponse:
         repository = f"{owner}/{repo}"
         try:
@@ -360,6 +362,10 @@ def create_app(
             architecture_url=request.url_for("architecture_view", **paths),
             generate_url=request.url_for("generate_roles", **paths),
             tree=PackageTree.build(roles),
+            graph=architecture.graph(repository, sha).neighborhood(selected.path, graph_page)
+            if selected
+            else None,
+            arrow=arrow,
             roles=roles[start : start + GROUP_SIZE],
             selected=selected,
             notice=notice,

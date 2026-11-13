@@ -1,0 +1,36 @@
+<section class="panel module-graph" aria-labelledby="relationships-title">
+  <h2 id="relationships-title">Module relationships</h2>
+  {% set positions = graph.positions() %}
+  <div class="graph-canvas">
+    <svg viewBox="0 0 600 300" role="img" aria-label="Directed Python imports. The import list below links to the same relationships.">
+      <defs><marker id="import-tip" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z"/></marker></defs>
+      {% for edge in graph.edges %}
+        <path class="import-edge" d="{{ arrow(positions[edge.source], positions[edge.target]) }}" marker-end="url(#import-tip)"><title>{{ edge.source.name }} imports {{ edge.target.name }}</title></path>
+      {% endfor %}
+      {% for node, (x, y) in positions.items() %}
+        <g{% if node.path == selected.path %} class="selected-module"{% endif %}>
+          <title>{{ node.name }} · {{ node.path }}</title>
+          <circle cx="{{ x }}" cy="{{ y }}" r="8"></circle>
+          <text x="{{ x + (14 if x >= 300 else -14) }}" y="{{ y + 4 }}" text-anchor="{{ 'start' if x >= 300 else 'end' }}">{{ node.name|truncate(21, true, '…', 0) }}</text>
+        </g>
+      {% endfor %}
+    </svg>
+  </div>
+  <h3>Import list</h3>
+  {% if graph.edges %}<ul class="import-list">
+    {% for edge in graph.edges %}<li>
+      <a href="{{ architecture_url.include_query_params(path=edge.source.path) }}">{{ edge.source.name }}</a> imports
+      <a href="{{ architecture_url.include_query_params(path=edge.target.path) }}">{{ edge.target.name }}</a>
+      {% for site in edge.sites %}
+        <a class="import-site" hx-boost="false" href="{{ explorer_url.include_query_params(path=site.path, line=site.start, end=site.end) }}#L{{ site.start }}">{{ site.path }} · L{{ site.start }}{% if site.end != site.start %}–{{ site.end }}{% endif %}</a>
+      {% endfor %}
+    </li>{% endfor %}
+  </ul>{% else %}<p>No resolved local imports in this view.</p>{% endif %}
+  {% if graph.pages > 1 %}
+    <div class="line-paging">
+      {% if graph.page > 1 %}<a href="{{ architecture_url.include_query_params(path=selected.path, graph_page=graph.page-1) }}">Previous neighbors</a>{% endif %}
+      <span>Neighbors of {{ selected.module }} · page {{ graph.page }} of {{ graph.pages }}</span>
+      {% if graph.page < graph.pages %}<a href="{{ architecture_url.include_query_params(path=selected.path, graph_page=graph.page+1) }}">Next neighbors</a>{% endif %}
+    </div>
+  {% endif %}
+</section>
