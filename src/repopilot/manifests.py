@@ -86,6 +86,54 @@ def _logical_lines(lines: list[str]) -> Iterator[tuple[int, int, str]]:
         yield start, len(lines), "".join(parts)
 
 
+def go_manifest(
+    path: str, text: str
+) -> tuple[str, list[Declaration], list[Diagnostic]]:
+    module = ""
+    declarations: list[Declaration] = []
+    diagnostics: list[Diagnostic] = []
+    block = ""
+    for number, source in enumerate(text.splitlines(), 1):
+        line, _, comment = source.partition("//")
+        parts = line.split()
+        if not parts:
+            continue
+        if parts == [")"]:
+            block = ""
+            continue
+        if len(parts) == 2 and parts[1] == "(":
+            block = parts[0]
+            continue
+        directive, args = (block, parts) if block else (parts[0], parts[1:])
+        if directive not in {"module", "require"}:
+            continue
+        if len(args) != (1 if directive == "module" else 2):
+            diagnostics.append(Diagnostic(path, number, "Unsupported go.mod directive"))
+            continue
+        name = args[0]
+        if name.startswith(('"', "`")) and name.endswith(name[0]):
+            name = name[1:-1]
+        if not name or any(c in name for c in ('"', "`", "\\")):
+            diagnostics.append(Diagnostic(path, number, "Unsupported Go module path"))
+            continue
+        if directive == "module":
+            module = name
+        elif comment.strip().split()[:1] != ["indirect"]:
+            declarations.append(
+                Declaration(
+                    "go:" + name,
+                    args[1],
+                    None,
+                    (),
+                    None,
+                    "require",
+                    Span(path, number, number),
+                    source,
+                )
+            )
+    return module, declarations, diagnostics
+
+
 def npm_declarations(
     path: str, text: str
 ) -> tuple[list[Declaration], list[Diagnostic]]:
@@ -356,10 +404,19 @@ class _Reader:
             self.declarations.extend(declarations)
             self.diagnostics.extend(diagnostics)
 
+    def go(self, path: str) -> None:
+        text = self.read(path)
+        if text is not None:
+            _, declarations, diagnostics = go_manifest(path, text)
+            self.declarations.extend(declarations)
+            self.diagnostics.extend(diagnostics)
+
 
 def revision_declarations(path: str, text: str, group: str) -> tuple[Declaration, ...]:
     reader = _Reader({path: "text"}, lambda _: text)
-    if PurePosixPath(path).name == "package.json":
+    if PurePosixPath(path).name == "go.mod":
+        reader.go(path)
+    elif PurePosixPath(path).name == "package.json":
         reader.npm(path)
     elif PurePosixPath(path).name == "pyproject.toml":
         reader.pyproject(path)
@@ -377,7 +434,9 @@ def parse_manifests(snapshot: SourceSnapshot) -> ManifestReport:
     )
     for name in sorted(reader.files):
         path = PurePosixPath(name)
-        if path.name == "package.json":
+        if path.name == "go.mod":
+            reader.go(name)
+        elif path.name == "package.json":
             reader.npm(name)
         elif path.name == "pyproject.toml":
             reader.pyproject(name)

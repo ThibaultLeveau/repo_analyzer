@@ -97,23 +97,26 @@ def analyze_dependencies(
     for module in (facts or analyze_snapshot(snapshot)).modules:
         path = PurePosixPath(module.span.path)
         javascript = path.suffix in SUFFIXES
-        if path.suffix != ".py" and not javascript:
+        if path.suffix not in {".py", ".go"} and not javascript:
             continue
         is_test = (
             bool({"test", "tests"} & set(path.parts[:-1]))
             or path.name.startswith("test_")
             or path.name.endswith("_test.py")
+            or path.name.endswith("_test.go")
             or (javascript and path.stem.endswith((".test", ".spec")))
         )
         for fact in module.imports:
             if fact.kind != "external" or not fact.target:
                 continue
             root = fact.target.split(".")[0]
-            providers = (
-                ("npm:" + package_name(fact.target),)
-                if javascript
-                else known_providers(fact) or (canonicalize_name(root),)
-            )
+            providers: tuple[str, ...]
+            if javascript:
+                providers = ("npm:" + package_name(fact.target),)
+            elif path.suffix == ".go":
+                providers = ("go:" + fact.target,)
+            else:
+                providers = known_providers(fact) or (canonicalize_name(root),)
             if javascript and providers[0] not in declarations:
                 # Bare imports may resolve through a bundler alias or a workspace package.
                 continue
