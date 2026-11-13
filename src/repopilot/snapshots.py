@@ -4,6 +4,7 @@ import sqlite3
 import stat
 import unicodedata
 import zipfile
+from collections.abc import Iterator
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
@@ -67,6 +68,13 @@ class SourceSnapshot:
         if not isinstance(content, str):
             raise SnapshotError(f"Cannot display {kind} entry")
         return content
+
+    def texts(self) -> Iterator[tuple[str, str]]:
+        with closing(self._open()) as db:
+            for path, content in db.execute(
+                "SELECT path, content FROM entries WHERE kind='text' ORDER BY path"
+            ):
+                yield path, content.replace("\r\n", "\n").replace("\r", "\n")
 
     def lines(self, path: str) -> list[str]:
         text = self.read_text(path).replace("\r\n", "\n").replace("\r", "\n")

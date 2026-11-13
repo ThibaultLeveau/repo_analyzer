@@ -20,6 +20,7 @@ from repopilot.github import GitHubError
 from repopilot.grounding import StructuredModel
 from repopilot.guide import Guide, Guides
 from repopilot.imports import ImportService, import_service
+from repopilot.search import QUERY_LIMIT, LexicalSearch
 from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
 
@@ -66,7 +67,13 @@ def create_app(
         return templates.TemplateResponse(
             request=request,
             name="workspace.html" if fragment else "base.html",
-            context={"title": title, "fragment": fragment, "csrf": csrf, **context},
+            context={
+                "title": title,
+                "fragment": fragment,
+                "csrf": csrf,
+                "query_limit": QUERY_LIMIT,
+                **context,
+            },
             status_code=status_code,
             headers={
                 "Vary": "HX-Request, HX-History-Restore-Request",
@@ -269,6 +276,38 @@ def create_app(
             headers={
                 "Content-Disposition": 'attachment; filename="getting-started.md"'
             },
+        )
+
+    @lru_cache(maxsize=2)
+    def lexical_index(repository: str, sha: str) -> LexicalSearch:
+        return LexicalSearch(engine.cache.open(repository, sha))
+
+    @app.get("/repos/{owner}/{repo}/{sha}/search", response_class=HTMLResponse)
+    def search_view(
+        request: Request, owner: str, repo: str, sha: str, q: str = ""
+    ) -> HTMLResponse:
+        repository = f"{owner}/{repo}"
+        paths = {"owner": owner, "repo": repo, "sha": sha}
+        try:
+            engine.cache.open(repository, sha)
+        except (FileNotFoundError, GitHubError, SnapshotError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        error = ""
+        hits = []
+        if len(q) > QUERY_LIMIT:
+            error = f"Enter at most {QUERY_LIMIT} characters."
+        elif q.strip():
+            hits = lexical_index(repository, sha).search(q)
+        return page(
+            request,
+            "Search",
+            status_code=422 if error else 200,
+            repository=repository,
+            sha=sha,
+            explorer_url=request.url_for("explorer", **paths),
+            query=q[:QUERY_LIMIT],
+            hits=hits,
+            error=error,
         )
 
     @app.get("/repos/{owner}/{repo}/{sha}/code", response_class=HTMLResponse)

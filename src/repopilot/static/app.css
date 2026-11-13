@@ -28,6 +28,15 @@ a:focus-visible, main:focus-visible { outline: 2px solid var(--accent); outline-
 .brand { display: inline-flex; align-items: center; gap: .65rem; font-size: 1.24rem; font-weight: 680; color: var(--text); }
 .mark { font: 700 2.2rem/1 monospace; color: var(--accent); }
 .repo-context { padding-left: 1.5rem; border-left: 1px solid var(--line); color: var(--muted); font-size: .87rem; }
+.header-search { margin-left: auto; display: flex; gap: .4rem; max-width: 100%; }
+.header-search input, .header-search button { padding: .4rem .65rem; background: var(--bg); border: 1px solid var(--line); border-radius: .3rem; color: var(--text); font: inherit; }
+.header-search input { min-width: 0; width: 15rem; }
+.header-search button { color: var(--accent); }
+.search-results { list-style: none; padding: 0; margin: 0; }
+.search-results li { padding-block: .6rem; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.search-results small, .search-results span { color: var(--muted); font-size: .85rem; }
+.search-results small { margin-right: .45rem; }
+.search-results span { display: block; }
 #workspace { display: grid; grid-template: auto 1fr / 13.5rem minmax(0, 1fr); min-height: 100vh; }
 .topbar { grid-column: 1 / -1; }
 nav { padding: 1.55rem .8rem; border-right: 1px solid var(--line); background: #10151b; }
@@ -90,7 +99,7 @@ pre { max-width: 100%; overflow-x: auto; padding: 1rem; background: var(--bg); b
 @media (max-width: 46rem) {
   .explorer { grid-template-columns: minmax(0, 1fr); }
   .file-tree { max-height: 14rem; }
-  .topbar { padding-inline: 1rem; gap: .8rem; }
+  .topbar { padding-inline: 1rem; gap: .8rem; flex-wrap: wrap; }
   .repo-context { padding-left: .8rem; }
   #workspace { display: block; }
   nav { display: flex; flex-wrap: wrap; gap: .5rem; padding: .65rem 1rem; border: 0; border-bottom: 1px solid var(--line); }

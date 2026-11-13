@@ -3,6 +3,32 @@ from pathlib import Path
 from playwright.sync_api import Page, expect
 
 
+def test_search_by_keyboard_and_follow_symbol(
+    page: Page, app_url: str, explorer_url: str
+) -> None:
+    page.goto(app_url + explorer_url)
+    search = page.get_by_role("searchbox", name="Search this snapshot")
+    results = page.get_by_role("region", name="Search results")
+    search.press("Enter")
+    expect(results).to_contain_text("Enter a path")
+    search.fill("zero results")
+    search.press("Enter")
+    expect(results).to_contain_text("No matches")
+    search.fill("msg")
+    search.press("Enter")
+    result = results.get_by_role("link", name="demo.msg")
+    expect(result).to_be_visible()
+    search.focus()
+    for _ in range(12):
+        page.keyboard.press("Tab")
+        if result.evaluate("element => document.activeElement === element"):
+            break
+    expect(result).to_be_focused()
+    page.keyboard.press("Enter")
+    expect(page.locator("#L2:target.selected")).to_contain_text('msg = "<tag>"')
+    assert explorer_url in page.url
+
+
 def test_copy_download_and_follow_setup_evidence(
     page: Page, app_url: str, explorer_url: str, tmp_path: Path
 ) -> None:
