@@ -56,6 +56,17 @@ Each observation includes its file and line range at the selected commit.
 Optional model explanations receive the static observation and its limits.
 Literal values and source lines are excluded from that request.
 
+### Mutable default corrections
+
+In **Quality audit**, open a `BUG001` finding and choose **Preview maintenance fix**.
+RepoPilot checks a top-level Python function's pinned signature and docstring.
+For example, `If items is omitted or None, create a fresh list for each call.`
+states the per-call contract for an `items=[]` parameter. The same check
+supports an empty dictionary and keyword-only parameters. A documented shared
+cache, ambiguous contract, non-empty default or annotated parameter requires
+manual review. A verified patch preserves callers' explicit containers and
+can be downloaded and tested in a separate checkout.
+
 ## Retrieval and citation validation
 
 ```mermaid "Question and answer graph"

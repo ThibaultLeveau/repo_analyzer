@@ -30,6 +30,7 @@ from repopilot.history import History
 from repopilot.imports import ImportService, import_service
 from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
 from repopilot.languages import supported
+from repopilot.maintenance import maintenance_fix
 from repopilot.module_graph import arrow
 from repopilot.official_docs import OfficialDocs, source_for
 from repopilot.patches import dependency_fix
@@ -715,6 +716,58 @@ def create_app(
             excerpt=excerpt,
             audit_url=request.url_for("audit_view", **paths),
             explorer_url=request.url_for("explorer", **paths),
+        )
+
+    @app.get(audit_path + "/maintenance", response_class=HTMLResponse)
+    def maintenance_preview(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        finding: str,
+        download: bool = False,
+    ) -> Response:
+        repository = f"{owner}/{repo}"
+        try:
+            snapshot = engine.cache.open(repository, sha)
+            report = architecture.audit(repository, sha)
+        except (FileNotFoundError, GitHubError, SnapshotError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        item = next(
+            (f for f in report.findings if f.rule == "BUG001" and f.key == finding),
+            None,
+        )
+        if item is None:
+            raise HTTPException(404, "Maintenance finding not found in this snapshot")
+        module = next(
+            m
+            for m in architecture.artifacts.python(snapshot).modules
+            if m.span.path == item.span.path
+        )
+        patch = maintenance_fix(snapshot, module, item, sha)
+        paths = {"owner": owner, "repo": repo, "sha": sha}
+        if download:
+            if not patch.diff:
+                raise HTTPException(409, patch.reason)
+            return Response(
+                patch.diff.encode(),
+                media_type="text/x-diff",
+                headers={
+                    "Content-Disposition": 'attachment; filename="maintenance.patch"'
+                },
+            )
+        return page(
+            request,
+            "Quality audit",
+            repository=repository,
+            sha=sha,
+            patch=patch,
+            selected=item,
+            audit_url=request.url_for("audit_view", **paths),
+            explorer_url=request.url_for("explorer", **paths),
+            download_url=request.url_for(
+                "maintenance_preview", **paths
+            ).include_query_params(finding=item.key, download="true"),
         )
 
     @app.get(audit_path, response_class=HTMLResponse)

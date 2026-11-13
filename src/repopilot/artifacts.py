@@ -61,7 +61,7 @@ class Artifacts:
         return version + self._language_version(snapshot)
 
     def audit_version(self, snapshot: SourceSnapshot) -> str:
-        return f"2.{self.facts_version(snapshot)}.{self.versions.dependencies}"
+        return f"3.{self.facts_version(snapshot)}.{self.versions.dependencies}"
 
     def read[T](
         self,
@@ -170,6 +170,11 @@ class Artifacts:
                 saved(
                     "audit",
                     self.audit_version(snapshot),
+                    TypeAdapter(Audit),
+                )
+                or saved(
+                    "audit",
+                    f"2.{self.facts_version(snapshot)}.{self.versions.dependencies}",
                     TypeAdapter(Audit),
                 )
                 or saved(
