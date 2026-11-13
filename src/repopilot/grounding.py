@@ -7,11 +7,12 @@ from typing import Literal, Protocol
 from urllib.parse import urlencode
 
 from langchain_core.exceptions import LangChainException
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from openai import APITimeoutError, OpenAIError
 from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 
+from repopilot.events import measure, provider_client
 from repopilot.python_facts import Span
 from repopilot.snapshots import SnapshotCache
 
@@ -140,26 +141,36 @@ def grounded_answer(
             )
         ),
     ]
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if model is None and not key:
+        return Answer("missing_key")
     try:
-        if model is None:
-            key = os.environ.get("OPENAI_API_KEY", "").strip()
-            if not key:
-                return Answer("missing_key")
-            chat = ChatOpenAI(
-                model=os.getenv("REPOPILOT_CHAT_MODEL") or DEFAULT_MODEL,
-                api_key=SecretStr(key),
-                base_url="https://api.openai.com/v1",
-                timeout=30,
-                max_retries=1,
-            )
-            model = chat.with_structured_output(
-                DraftAnswer, method="json_schema", strict=True
-            )
-        raw = model.invoke(messages)
+        with measure("model.chat") as metrics:
+            if model is None:
+                with provider_client(metrics) as client:
+                    chat = ChatOpenAI(
+                        model=os.getenv("REPOPILOT_CHAT_MODEL") or DEFAULT_MODEL,
+                        api_key=SecretStr(key),
+                        base_url="https://api.openai.com/v1",
+                        timeout=30,
+                        max_retries=1,
+                        http_client=client,
+                    )
+                    raw = chat.with_structured_output(
+                        DraftAnswer, method="json_schema", strict=True, include_raw=True
+                    ).invoke(messages)
+                message = raw.get("raw") if isinstance(raw, dict) else None
+                if isinstance(message, AIMessage) and message.usage_metadata:
+                    metrics.tokens = message.usage_metadata["total_tokens"]
+                raw = raw.get("parsed") if isinstance(raw, dict) else None
+            else:
+                raw = model.invoke(messages)
+            result = _validate(raw, supplied)
+            metrics.success = result.status != "invalid_response"
+            return result
     except (TimeoutError, APITimeoutError):
         return Answer("timeout")
     except ValueError:
         return Answer("invalid_response")
     except (OpenAIError, LangChainException, OSError, RuntimeError):
         return Answer("provider_error")
-    return _validate(raw, supplied)

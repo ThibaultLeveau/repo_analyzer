@@ -17,6 +17,7 @@ from filelock import FileLock, Timeout
 from openai import OpenAI, OpenAIError
 
 from repopilot.artifacts import CHUNK_SCHEMA
+from repopilot.events import measure, provider_client
 from repopilot.python_facts import Span
 from repopilot.search import RESULT_LIMIT, Chunk, chunks
 from repopilot.snapshots import SnapshotCache
@@ -48,26 +49,35 @@ class OpenAIEmbedder:
         if not key:
             raise VectorError("Set OPENAI_API_KEY to use semantic search.")
         try:
-            with OpenAI(
-                api_key=key,
-                base_url="https://api.openai.com/v1",
-                timeout=30,
-                max_retries=1,
-            ) as client:
+            with (
+                measure("model.embed") as metrics,
+                provider_client(metrics) as http,
+                OpenAI(
+                    api_key=key,
+                    base_url="https://api.openai.com/v1",
+                    timeout=30,
+                    max_retries=1,
+                    http_client=http,
+                ) as client,
+            ):
                 reply = client.embeddings.create(
                     input=texts,
                     model=config.model,
                     dimensions=config.dimensions,
                     encoding_format="float",
                 )
+                if reply.usage is not None:
+                    metrics.tokens = reply.usage.total_tokens
+                records = sorted(reply.data, key=lambda item: item.index)
+                if [r.index for r in records] != list(range(len(texts))):
+                    raise VectorError(
+                        "The embedding provider returned an incomplete batch."
+                    )
+                return [r.embedding for r in records]
         except OpenAIError as exc:
             raise VectorError(
                 "The embedding provider is unavailable. Retry to resume."
             ) from exc
-        records = sorted(reply.data, key=lambda item: item.index)
-        if [r.index for r in records] != list(range(len(texts))):
-            raise VectorError("The embedding provider returned an incomplete batch.")
-        return [r.embedding for r in records]
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from repopilot.audit import Audit
 from repopilot.dependencies import DependencyReport, analyze_dependencies
+from repopilot.events import measure
 from repopilot.onboarding import SetupEvidence, extract_setup
 from repopilot.python_facts import PythonFacts, analyze_python
 from repopilot.snapshots import SourceSnapshot
@@ -53,6 +54,7 @@ class Artifacts:
         compute: Callable[[], T],
     ) -> T:
         with (
+            measure("cache.read") as metrics,
             FileLock(directory / f"{kind.partition(':')[0]}.lock"),
             closing(sqlite3.connect(directory / "analysis.db")) as db,
         ):
@@ -65,9 +67,12 @@ class Artifacts:
             ).fetchone()
             if row is not None:
                 try:
-                    return schema.validate_json(row[0], strict=True)
+                    cached = schema.validate_json(row[0], strict=True)
+                    metrics.cache = "hit"
+                    return cached
                 except ValidationError:
                     pass
+            metrics.cache = "miss"
             value = compute()
             with db:
                 db.execute(

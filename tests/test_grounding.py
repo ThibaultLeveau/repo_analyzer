@@ -5,8 +5,9 @@ from pathlib import Path
 import httpx2
 import pytest
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from openai import DefaultHttpxClient
 
+from repopilot.events import EventStore
 from repopilot.grounding import Answer, Claim, Evidence, grounded_answer, read_evidence
 from repopilot.python_facts import Span
 from repopilot.snapshots import SnapshotCache
@@ -101,12 +102,17 @@ def test_missing_key_and_mixed_snapshots(monkeypatch: pytest.MonkeyPatch) -> Non
         grounded_answer("Explain", [a, b])
 
 
-def test_openai_wire_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("tokens", [None, 12])
+def test_openai_wire_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tokens: int | None
+) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "fixture-key")
     monkeypatch.setenv("REPOPILOT_CHAT_MODEL", "gpt-4o-mini")
     source = Evidence("a/b", "a" * 40, Span("settings.py", 1, 1), "MAX = 2")
 
     def reply(request: httpx2.Request) -> httpx2.Response:
+        if request.headers["x-stainless-retry-count"] == "0":
+            return httpx2.Response(503, headers={"retry-after-ms": "1"})
         body = json.loads(request.content)
         assert request.url.host == "api.openai.com"
         assert body["model"] == "gpt-4o-mini" and "tools" not in body
@@ -121,6 +127,17 @@ def test_openai_wire_contract(monkeypatch: pytest.MonkeyPatch) -> None:
                 "object": "chat.completion",
                 "created": 1,
                 "model": body["model"],
+                **(
+                    {
+                        "usage": {
+                            "prompt_tokens": 10,
+                            "completion_tokens": 2,
+                            "total_tokens": tokens,
+                        }
+                    }
+                    if tokens is not None
+                    else {}
+                ),
                 "choices": [
                     {
                         "index": 0,
@@ -131,10 +148,23 @@ def test_openai_wire_contract(monkeypatch: pytest.MonkeyPatch) -> None:
             },
         )
 
-    with httpx2.Client(transport=httpx2.MockTransport(reply)) as client:
-        monkeypatch.setattr(
-            "repopilot.grounding.ChatOpenAI", partial(ChatOpenAI, http_client=client)
-        )
+    monkeypatch.setattr(
+        "repopilot.events.DefaultHttpxClient",
+        partial(DefaultHttpxClient, transport=httpx2.MockTransport(reply)),
+    )
+    store = EventStore(tmp_path)
+    with store.scope(source.repository, source.sha):
         assert grounded_answer("What is the maximum?", [source]) == Answer(
             "ok", (Claim("Maximum is two.", (source,)),)
         )
+    total = store.totals(source.repository)
+    assert (total.openai_calls, total.retries, total.reported_tokens) == (2, 1, tokens)
+    assert total.calls_without_usage == (2 if tokens is None else 1)
+    assert not total.provider_failures
+    for private in (
+        "fixture-key",
+        source.excerpt,
+        "What is the maximum?",
+        "Maximum is two.",
+    ):
+        assert private.encode() not in store.path.read_bytes()
