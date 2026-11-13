@@ -10,6 +10,7 @@ from time import sleep
 from filelock import Timeout
 
 from repopilot.architecture import Architecture
+from repopilot.events import EventStore, measure
 from repopilot.github import GitHubError, repository_name
 from repopilot.guide import Guides
 from repopilot.imports import import_service
@@ -38,13 +39,14 @@ def _analyze(args: argparse.Namespace, directory: Path) -> Report:
             raise GitHubError("The import has no source revision.")
         repo, sha = head.full_name, head.sha
         architecture = service.architecture
-        architecture.artifacts.prepare(service.cache.open(repo, sha))
-        architecture.audit(repo, sha)
-        if args.generate_guide:
-            status = Guides(architecture).generate(repo, sha)
-            if status != "ok":
-                raise GitHubError(f"Guide generation is unavailable ({status}).")
-        return build_report(architecture, Scores(directory), repo, sha)
+        with service.events.scope(repo, sha, job.id), measure("cli.analyze"):
+            architecture.artifacts.prepare(service.cache.open(repo, sha))
+            architecture.audit(repo, sha)
+            if args.generate_guide:
+                status = Guides(architecture).generate(repo, sha)
+                if status != "ok":
+                    raise GitHubError(f"Guide generation is unavailable ({status}).")
+            return build_report(architecture, Scores(directory), repo, sha)
 
 
 def _cached(args: argparse.Namespace, directory: Path) -> Report:
@@ -52,7 +54,8 @@ def _cached(args: argparse.Namespace, directory: Path) -> Report:
     cache = SnapshotCache(directory / "sources")
     cache.open(repo, args.sha)
     architecture = Architecture(cache, StateStore(directory / "state.db"))
-    return build_report(architecture, Scores(directory), repo, args.sha)
+    with EventStore(directory).scope(repo, args.sha), measure("cli.export"):
+        return build_report(architecture, Scores(directory), repo, args.sha)
 
 
 def _write(path: Path, content: bytes) -> None:

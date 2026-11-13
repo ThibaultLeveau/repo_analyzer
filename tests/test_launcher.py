@@ -15,6 +15,8 @@ from shutil import copyfile, copytree
 import httpx2
 import pytest
 
+from repopilot.events import EventStore
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -132,6 +134,10 @@ def test_one_command_cold_warm_persistence_and_port_error(tmp_path: Path) -> Non
         str(data),
     ]
     with running(command, tmp_path, env, port):
+        with httpx2.Client(trust_env=False) as client:
+            assert client.get(
+                f"http://127.0.0.1:{port}/setup", params={"q": "private-launcher-query"}
+            ).is_success
         assert (data / "state.db").is_file() and (
             data / "chroma" / "chroma.sqlite3"
         ).is_file()
@@ -145,6 +151,12 @@ def test_one_command_cold_warm_persistence_and_port_error(tmp_path: Path) -> Non
             command, cwd=tmp_path, env=env, capture_output=True, timeout=50, check=False
         )
         assert occupied.returncode != 0 and b"Choose another --port" in occupied.stderr
+    output = (tmp_path / "launch.log").read_text(errors="replace")
+    assert (
+        "Application startup complete." in output
+        and "private-launcher-query" not in output
+    )
+    assert "web.setup" in {e.operation for e in EventStore(data).recent()}
     with running(command, tmp_path, env, port):
         assert marker.stat().st_mtime_ns == first_time
         with sqlite3.connect(data / "issues.db") as db:
