@@ -1,5 +1,6 @@
 <section class="panel guide" aria-label="Issue queue controls">
   {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+  <a href="{{ issue_url }}/history">Repository history</a>
   <p>{{ queue.issues|length }} issues loaded{% if queue.fetched_at is not none and queue.exhausted %} · All open issues loaded{% endif %}</p>
   {% if next_time %}<p role="status">{% if limited %}GitHub rate limit.{% endif %} Next request available {{ next_time }}. <a href="{{ issue_url }}">Check availability</a></p>{% endif %}
   <form class="form-row" action="{{ actions_url }}" method="post" hx-boost="false">
@@ -54,6 +55,7 @@
       <p>Updated <time datetime="{{ selected.updated_at }}">{{ selected.updated_at }}</time></p>
       <p class="issue-body">{{ selected.body or 'No description provided.' }}</p>
       <a href="https://github.com/{{ repository }}/issues/{{ selected.number }}" hx-boost="false">Open on GitHub</a>
+      <a href="{{ issue_url }}/history?number={{ selected.number }}">View discussion history</a>
       {% if displayed %}
         {% set score = displayed.score %}
         {% include "assessment.html" %}

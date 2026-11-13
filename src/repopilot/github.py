@@ -52,7 +52,7 @@ def repository_name(url: str) -> str:
     return name
 
 
-def api_get(client: httpx2.Client, url: str) -> httpx2.Response:
+def api_get(client: httpx2.Client, url: str, *, etag: str = "") -> httpx2.Response:
     try:
         target = httpx2.URL(url)
         for _ in range(6):
@@ -65,10 +65,15 @@ def api_get(client: httpx2.Client, url: str) -> httpx2.Response:
                 raise GitHubError("Unexpected GitHub API origin")
             response = client.get(
                 target,
-                headers={"Accept": "application/vnd.github+json"},
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    **({"If-None-Match": etag} if etag else {}),
+                },
                 timeout=15,
                 follow_redirects=False,
             )
+            if response.status_code == 304 and etag:
+                return response
             if response.has_redirect_location:
                 target = target.join(response.headers["location"])
                 continue

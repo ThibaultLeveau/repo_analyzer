@@ -1,0 +1,25 @@
+<section class="panel guide">
+  {% set owner, repo = repository.split('/') %}
+  {% set url = url_for('history_view', owner=owner, repo=repo, sha=sha) %}
+  <h2>{{ 'Discussion for issue #' ~ number if number else 'Closed issues and recent commits' }}</h2>
+  <p>Load up to 40 entries per list. The first six linked pull requests and six commits include changed paths when available.</p>
+  <form method="post" action="{{ url }}" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    {% if number %}<input type="hidden" name="number" value="{{ number }}">{% endif %}
+    {% if observation %}<input type="hidden" name="refresh" value="true">{% endif %}
+    <button class="button" type="submit">{{ 'Refresh history' if observation else 'Load history' }}</button>
+  </form>
+  {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+  {% if observation %}
+  <p>Observed {{ observation.observed_at|utc }} UTC for commit <code>{{ sha }}</code>.</p>
+  <ul class="search-results">{% for item in observation.records %}
+    <li><small>{{ item.kind|capitalize }} · {{ item.author or 'Unknown author' }} · {{ item.timestamp }}{% if item.state %} · {{ item.state }}{% endif %}</small>
+      <a href="{{ item.url }}" hx-boost="false">{{ item.title }}</a>
+      {% if item.kind == 'issue' and not number %} · <a href="{{ url.include_query_params(number=item.number) }}">Inspect discussion #{{ item.number }}</a>{% endif %}
+      {% if item.body and item.body != item.title %}<span>{{ item.body }}</span>{% endif %}
+      {% if item.paths %}<span>{{ item.paths|join(', ') }}</span>{% endif %}
+    </li>
+  {% else %}<li>No matching history in this observation.</li>{% endfor %}</ul>
+  {% if observation.links %}<h3>Recorded relationships</h3><ul>{% for link in observation.links %}<li>{{ link.source }} · {{ link.relation|replace('_', ' ') }} · {{ link.target }}</li>{% endfor %}</ul>{% endif %}
+  {% endif %}
+</section>
