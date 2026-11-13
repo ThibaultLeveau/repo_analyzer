@@ -9,6 +9,10 @@ from repopilot.python_facts import ImportFact, PythonFacts, analyze_python
 from repopilot.snapshots import SourceSnapshot
 
 _PROVIDERS = {
+    "fastapi": ("fastapi",),
+    "httpx": ("httpx",),
+    "pytest": ("pytest",),
+    "requests": ("requests",),
     "PIL": ("pillow",),
     "yaml": ("pyyaml",),
     "bs4": ("beautifulsoup4",),
@@ -24,6 +28,18 @@ _PROVIDERS = {
     "google.cloud.storage": ("google-cloud-storage",),
     "google.auth": ("google-auth",),
 }
+
+
+def known_providers(fact: ImportFact) -> tuple[str, ...]:
+    imported = f"{fact.target}.{fact.name}" if fact.name else fact.target or ""
+    return next(
+        (
+            names
+            for key, names in _PROVIDERS.items()
+            if imported == key or imported.startswith(key + ".")
+        ),
+        (),
+    )
 
 
 @dataclass(frozen=True)
@@ -85,15 +101,7 @@ def analyze_dependencies(
             if fact.kind != "external" or not fact.target:
                 continue
             root = fact.target.split(".")[0]
-            imported = f"{fact.target}.{fact.name}" if fact.name else fact.target
-            providers = next(
-                (
-                    names
-                    for key, names in _PROVIDERS.items()
-                    if imported == key or imported.startswith(key + ".")
-                ),
-                (canonicalize_name(root),),
-            )
+            providers = known_providers(fact) or (canonicalize_name(root),)
             candidates = tuple(p for p in providers if p in declarations) or providers
             ambiguous = candidates if len(candidates) > 1 else ()
             for name in candidates:

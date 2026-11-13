@@ -35,6 +35,19 @@
         {% if use.is_test %}Test code.{% endif %} {% if use.fact.dynamic %}Literal dynamic import.{% endif %}
         {% if use.candidates %}Possible providers: {{ use.candidates|join(', ') }}.{% endif %}</p>
       </article>{% else %}<p>No matching imports in this snapshot. Plugins or runtime loading can still use this package.</p>{% endfor %}
+      {% if patch %}
+        <section aria-label="Patch preview">
+          <h3>Patch preview</h3><p>{{ patch.reason }}</p>
+          {% if patch.diff %}
+          <p>{{ patch.path }} · <code>{{ sha }}</code></p>
+          {{ cite(patch.evidence, patch.evidence.path ~ ' · L' ~ patch.evidence.start) }}
+          <pre><code>{{ patch.diff }}</code></pre>
+          <a hx-boost="false" href="{{ dependencies_url.include_query_params(package=selected.name, download='true') }}">Download patch</a>
+          {% endif %}
+        </section>
+      {% elif selected.observation in ('Possibly undeclared', 'Ambiguous distribution') %}
+        <a href="{{ dependencies_url.include_query_params(package=selected.name, preview='true') }}">Preview dependency fix</a>
+      {% endif %}
     {% endif %}
   </section>
 </div>

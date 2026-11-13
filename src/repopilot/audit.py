@@ -16,6 +16,7 @@ class Finding:
     explanation: str
     limit: str
     span: Span
+    distribution: str | None = None
 
     @property
     def key(self) -> str:
@@ -121,6 +122,7 @@ def analyze_audit(
                         f"An import maps to {package.name}, which is absent from the parsed declarations.",
                         "Distribution names can differ from import names. Runtime configuration may supply it.",
                         use.fact.span,
+                        package.name,
                     )
                 )
     findings.sort(

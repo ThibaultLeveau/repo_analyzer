@@ -21,6 +21,7 @@
     <p>{{ selected.rule }} · {{ selected.severity }}</p>
     <p>{{ selected.explanation }}</p>
     <p>{{ selected.limit }}</p>
+    {% if selected.distribution %}<p><a href="{{ url_for('dependencies', owner=repository.split('/')[0], repo=repository.split('/')[1], sha=sha).include_query_params(package=selected.distribution, preview='true') }}">Preview dependency fix</a></p>{% endif %}
     {% set span = selected.span %}
     <a hx-boost="false" href="{{ explorer_url.include_query_params(path=span.path, line=span.start, end=span.end) }}#L{{ span.start }}">{{ span.path }} · L{{ span.start }}–{{ span.end }}</a>
     <pre><code>{% for line in excerpt %}{{ span.start + loop.index0 }}  {{ line }}{% if not loop.last %}{{ '\n' }}{% endif %}{% endfor %}</code></pre>
