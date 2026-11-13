@@ -19,10 +19,11 @@ from repopilot.architecture import GROUP_SIZE, Architecture, PackageTree
 from repopilot.dependencies import DependencyReport
 from repopilot.explorer import PAGE_LINES, browse
 from repopilot.github import GitHubError, RateLimited
-from repopilot.grounding import StructuredModel
+from repopilot.grounding import StructuredModel, grounded_answer
 from repopilot.guide import Guide, Guides
 from repopilot.imports import ImportService, import_service
 from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
+from repopilot.references import ReferenceIndex
 from repopilot.search import QUERY_LIMIT, LexicalSearch
 from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
@@ -519,6 +520,61 @@ def create_app(
             return Response(headers={"HX-Redirect": location})
         return RedirectResponse(location, status_code=303)
 
+    @lru_cache(maxsize=2)
+    def reference_index(repository: str, sha: str) -> ReferenceIndex:
+        snapshot = engine.cache.open(repository, sha)
+        return ReferenceIndex(snapshot, architecture.artifacts.python(snapshot))
+
+    @app.post(
+        "/repos/{owner}/{repo}/{sha}/symbols/explain", dependencies=[Depends(protect)]
+    )
+    def explain_symbol(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        path: Annotated[str, Form()],
+        name: Annotated[str, Form()],
+        line: Annotated[int, Form()],
+    ) -> Response:
+        repository = f"{owner}/{repo}"
+        try:
+            snapshot = engine.cache.open(repository, sha)
+        except (FileNotFoundError, SnapshotError, GitHubError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        target = next(
+            (
+                s
+                for m in architecture.artifacts.python(snapshot).modules
+                if m.span.path == path
+                for s in m.symbols
+                if s.name == name and s.span.start == line
+            ),
+            None,
+        )
+        if target is None:
+            raise HTTPException(404, "Symbol not found")
+        detail = reference_index(repository, sha).detail(target)
+        question = f"Explain {name} using its definition and supplied references."
+        answer = grounded_answer(
+            question, detail.evidence(snapshot, repository, sha), model=model
+        )
+        saved_id = questions().save(repository, sha, question, answer)
+        url = request.url_for("explorer", owner=owner, repo=repo, sha=sha)
+        return RedirectResponse(
+            str(
+                url.include_query_params(
+                    path=path,
+                    definition=name,
+                    line=line,
+                    end=target.span.end,
+                    answer_id=saved_id,
+                )
+            )
+            + "#ask",
+            status_code=303,
+        )
+
     @app.get("/repos/{owner}/{repo}/{sha}/code", response_class=HTMLResponse)
     def explorer(
         request: Request,
@@ -531,6 +587,7 @@ def create_app(
         answer_id: int | None = None,
         symbol: str = "",
         source_page: int | None = None,
+        definition: str = "",
     ) -> HTMLResponse:
         repository = f"{owner}/{repo}"
         url = request.url_for("explorer", owner=owner, repo=repo, sha=sha)
@@ -567,6 +624,19 @@ def create_app(
             if module
             else []
         )
+        detail = None
+        if definition:
+            selected = next(
+                (
+                    s
+                    for s in (module.symbols if module else ())
+                    if s.name == definition and s.span.start == line
+                ),
+                None,
+            )
+            if selected is None:
+                raise HTTPException(404, "Symbol not found in this snapshot")
+            detail = reference_index(repository, sha).detail(selected)
         saved = None
         if answer_id is not None:
             try:
@@ -584,6 +654,10 @@ def create_app(
             view=view,
             module=module,
             symbols=symbols,
+            detail=detail,
+            explain_url=request.url_for(
+                "explain_symbol", owner=owner, repo=repo, sha=sha
+            ),
             symbol_filter=symbol,
             path=path,
             line=line,
