@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY, repository TEXT COLLATE NOCASE NOT NULL, sha TEXT NOT NULL,
     question TEXT NOT NULL, answer TEXT NOT NULL, citations TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS question_times (
+    question_id INTEGER PRIMARY KEY REFERENCES questions(id), created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 CREATE TABLE IF NOT EXISTS active_snapshots (
     repository TEXT PRIMARY KEY COLLATE NOCASE, sha TEXT NOT NULL, job_id INTEGER NOT NULL
 );
@@ -261,7 +264,20 @@ class StateStore:
                 "INSERT INTO questions(repository,sha,question,answer,citations) VALUES (?,?,?,?,?) RETURNING id",
                 (repository, sha, question, answer, json.dumps(citations)),
             ).fetchone()
+            db.execute("INSERT INTO question_times(question_id) VALUES (?)", (row[0],))
             return int(row[0])
+
+    def saved_questions(
+        self, repository: str, sha: str
+    ) -> list[tuple[str, str, str | None]]:
+        with self._connection() as db:
+            return [
+                tuple(row)
+                for row in db.execute(
+                    "SELECT q.question,q.answer,t.created_at FROM questions q LEFT JOIN question_times t ON t.question_id=q.id WHERE q.repository=? AND q.sha=? ORDER BY q.id",
+                    (repository, sha),
+                )
+            ]
 
     def question(self, repository: str, sha: str, answer_id: int) -> tuple[str, str]:
         with self._connection() as db:

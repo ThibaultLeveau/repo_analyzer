@@ -29,6 +29,12 @@
       <a href="{{ url_for('dependencies', owner=owner, repo=repo, sha=sha) }}"{% if title == 'Dependencies' %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">↳</span>Dependencies</a>
     {% endif %}
     {% if explorer_url %}<a href="{{ explorer_url }}"{% if title == 'Code Explorer' %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">⌗</span>Code Explorer</a>{% endif %}
+    {% if repository and sha %}
+    <details><summary>Download report</summary>
+      {% for ext, label in [('json', 'JSON'), ('md', 'Markdown'), ('html', 'HTML')] %}
+        <a hx-boost="false" href="{{ url_for('download_report', owner=owner, repo=repo, sha=sha).include_query_params(format=ext) }}">{{ label }} report</a>
+      {% endfor %}
+    </details>{% endif %}
   </nav>
   <main id="content" tabindex="-1">
     <h1>{{ title }}</h1>

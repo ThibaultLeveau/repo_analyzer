@@ -3,8 +3,9 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 from urllib.parse import quote
 
-from repopilot.architecture import Architecture
+from repopilot.architecture import Architecture, Role
 from repopilot.grounding import Claim, Evidence, grounded_answer
+from repopilot.onboarding import SetupEvidence
 from repopilot.python_facts import Span
 
 
@@ -85,6 +86,13 @@ class Guides:
     def _base(self, repository: str, sha: str) -> Guide:
         snapshot = self.architecture.cache.open(repository, sha)
         setup = self.architecture.artifacts.setup(snapshot)
+        roles, _ = self.architecture.inventory(repository, sha)
+        return self.compose(repository, sha, setup, roles)
+
+    def compose(
+        self, repository: str, sha: str, setup: SetupEvidence, roles: tuple[Role, ...]
+    ) -> Guide:
+        snapshot = self.architecture.cache.open(repository, sha)
         source_lines = lru_cache(maxsize=12)(snapshot.lines)
 
         def source(span: Span) -> Evidence:
@@ -120,7 +128,6 @@ class Guides:
             if steps:
                 span = steps[0].span
                 first_files.append(Item(span.path, context, source(span)))
-        roles, _ = self.architecture.inventory(repository, sha)
         roles = tuple(
             sorted(
                 roles,
@@ -185,7 +192,10 @@ class Guides:
         return answer.status
 
     def get(self, repository: str, sha: str) -> Guide:
-        guide = self.base(repository, sha)
+        return self.with_notes(self.base(repository, sha))
+
+    def with_notes(self, guide: Guide) -> Guide:
+        repository, sha = guide.repository, guide.sha
         saved = self.architecture.store.guide_notes(repository, sha, self.notes_key)
         sources = self._sources(guide)
         pending = [
