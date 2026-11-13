@@ -29,6 +29,9 @@ jobs:
         run: python -m pytest -v --ignore=tests/browser --ignore=tests/test_launcher.py
       - name: Smoke-test the cold and warm launcher
         run: python -m pytest -v tests/test_launcher.py
+      - name: Compare retrieval against the pinned baseline
+        if: runner.os == 'Linux'
+        run: python tests/evaluate_retrieval.py --check
       - name: Lint with Ruff
         if: runner.os == 'Linux'
         run: python -m ruff check .

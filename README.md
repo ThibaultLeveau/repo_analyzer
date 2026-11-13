@@ -80,3 +80,17 @@ python -m pytest -v tests/browser --tracing retain-on-failure --screenshot only-
 ```
 
 Failed runs save screenshots and traces under `test-results/`.
+
+### Retrieval evaluation
+
+Run `python tests/evaluate_retrieval.py --check` from the repository root to compare
+lexical, vector and hybrid retrieval on five labeled queries against the Catalog fixture.
+The command uses deterministic local embeddings and prints JSON with each ranked source
+range, metric and elapsed time. The fixture SHA and per-query recall baselines are
+in `tests/fixtures/retrieval-v1.json`.
+
+Recall at two is the fraction of distinct labeled ranges overlapped by either of the
+first two results in the same file. Source diversity is the number of distinct files
+divided by the number of returned results at that cutoff, or zero for an empty result.
+The summary averages each metric across queries. Query latency in milliseconds excludes
+index construction. CI compares per-query recall and reports timing for inspection.
