@@ -52,8 +52,6 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install ".[dev,docs]"
-      - name: Build user manual
-        run: python -m mkdocs build --strict
       - run: python -m playwright install --with-deps chromium
       - run: python -m pytest -v tests/browser --tracing retain-on-failure --screenshot only-on-failure
       - name: Upload browser failure diagnostics

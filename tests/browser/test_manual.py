@@ -2,6 +2,7 @@ import json
 import shlex
 import subprocess
 import sys
+from base64 import b64decode
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -63,6 +64,24 @@ def test_published_manual_and_documented_commands(
             ).to_be_visible()
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             example = page.locator("article pre code").last.inner_text()
+            page.set_viewport_size({"width": 1280, "height": 900})
+            page.get_by_role(
+                "link", name="Technical reference", exact=True
+            ).first.click()
+            expect(
+                page.get_by_role("heading", name="Technical reference", exact=True)
+            ).to_be_visible()
+            for name, nodes in [
+                ("Repository import graph", ("resolve", "fetch", "publish")),
+                ("Question and answer graph", ("retrieve", "answer_question", "save")),
+            ]:
+                graph = page.get_by_role("img", name=name)
+                expect(graph).to_be_visible()
+                assert graph.evaluate("img => img.complete && img.naturalWidth > 0")
+                data = graph.get_attribute("src")
+                assert data and data.startswith("data:image/svg+xml;base64,")
+                svg = b64decode(data.partition(",")[2]).decode()
+                assert all(f">{node}<" in svg for node in nodes)
         finally:
             server.shutdown()
             thread.join(10)
