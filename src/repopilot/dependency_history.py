@@ -34,7 +34,7 @@ def _sha(value: object) -> str:
 
 
 def _version(declaration: Declaration) -> tuple[SpecifierSet | str, str | None]:
-    if declaration.name.startswith("npm:"):
+    if declaration.name.startswith(("npm:", "go:")):
         return declaration.constraint, declaration.url
     return SpecifierSet(declaration.constraint), declaration.url
 
@@ -157,7 +157,7 @@ def dependency_history(
         return artifacts.read(
             snapshot.database.parent,
             "history:" + key,
-            "1",
+            "2" if selected.name.startswith("go:") else "1",
             TypeAdapter(Attribution),
             lambda: _trace(client, repo, sha, selected),
         )
