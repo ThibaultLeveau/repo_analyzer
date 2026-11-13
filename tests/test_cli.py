@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from journey_fixture import FILES, REPO, Catalog
 
 from repopilot.app import create_app
+from repopilot.events import EventStore
 
 
 def run_cli(env: dict[str, str], *args: str) -> subprocess.CompletedProcess[bytes]:
@@ -45,6 +46,17 @@ def test_installed_cli_selects_requested_revision_and_exports_offline(
         str(target),
     )
     assert saved.returncode == 0 and not saved.stdout, saved.stderr
+    store = EventStore(Path(cli_env["REPOPILOT_DATA_DIR"]))
+    events = store.recent(REPO)
+    analyzed = [e for e in events if e.operation == "cli.analyze"]
+    assert {e.sha for e in analyzed} == {head.sha, old.sha}
+    assert all(e.job_id and e.metrics.success for e in analyzed)
+    exported = [e for e in events if e.operation == "cli.export"]
+    assert (
+        len(exported) == 1 and exported[0].sha == old.sha and exported[0].job_id is None
+    )
+    assert store.totals(REPO).cache_hits and store.totals(REPO).cache_misses
+    assert b"python -m pip install -r requirements.txt" not in store.path.read_bytes()
     with TestClient(
         create_app(data_dir=Path(cli_env["REPOPILOT_DATA_DIR"])),
         base_url="http://localhost",

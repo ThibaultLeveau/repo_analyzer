@@ -81,7 +81,7 @@ def serve(data: Path, port: int) -> int:
             return 1
         initialize_chroma(data)
         server = uvicorn.Server(
-            uvicorn.Config(create_app(data_dir=data), log_level="info")
+            uvicorn.Config(create_app(data_dir=data), log_level="info", access_log=False)
         )
         print(f"Open http://127.0.0.1:{port}/", flush=True)
         # Uvicorn replays the shutdown signal after draining requests.
