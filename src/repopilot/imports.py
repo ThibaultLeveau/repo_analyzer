@@ -56,7 +56,10 @@ class ImportService:
         graph.add_edge("publish", END)
         self.graph = graph.compile()
 
-    def submit(self, url: str) -> Job:
+    def submit(self, url: str, *, sha: str | None = None) -> Job:
+        if sha is not None:
+            head = resolve_repository(url, self.client, revision=sha)
+            return self._schedule(head.full_name, head)
         return self._schedule(repository_name(url))
 
     def retry(self, job_id: int) -> Job:

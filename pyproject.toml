@@ -26,6 +26,9 @@ dependencies = [
     "uvicorn>=0.30,<1",
 ]
 
+[project.scripts]
+repopilot = "repopilot.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "bandit>=1.8,<2",

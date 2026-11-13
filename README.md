@@ -59,6 +59,27 @@ The chat adapter sends the question and selected evidence excerpts to OpenAI.
 RepoPilot builds each citation link from the stored repository, commit, path
 and line range. [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 
+## Command-line reports
+
+From the installed Python environment, analyze the default branch of a public repository:
+
+```sh
+repopilot analyze https://github.com/ThibaultLeveau/repo_analyzer --format json --output "analysis report.json"
+```
+
+Pass `--sha` with a full commit to analyze that revision. Static analysis runs locally.
+Add `--generate-guide` to request cited onboarding notes with the configured OpenAI key.
+To export stored analysis offline, copy the full SHA from the JSON report:
+
+```sh
+repopilot export ThibaultLeveau/repo_analyzer --sha FULL_COMMIT_SHA --format html --output "saved report.html"
+```
+
+Both commands support `json`, `md`, and `html`, and share the web application's
+`REPOPILOT_DATA_DIR` setting. Omit `--output` to write UTF-8 to stdout. Diagnostics
+go to stderr. Exit codes are 0 for success, 1 for an operational error, 2 for invalid
+arguments and 3 for a missing cached snapshot.
+
 ## Quality checks
 
 GitHub Actions tests Python 3.12 on Windows and Linux for pull requests,
