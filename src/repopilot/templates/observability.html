@@ -1,0 +1,53 @@
+{% macro reading(value, unit) -%}
+  {% if value is none %}Unavailable{% elif unit == 'MiB' %}{{ '%.2f'|format(value / 1048576) }} MiB{% else %}{{ '%.1f'|format(value) }}%{% endif %}
+{%- endmacro %}
+<div class="observability">
+  <section class="panel guide" aria-labelledby="activity-title">
+    <h2 id="activity-title">Repository activity</h2>
+    <form method="get" hx-boost="false">
+      <label for="metrics-window">Time window</label>
+      <select id="metrics-window" name="window">
+        {% for value, label in [('1h','Last hour'), ('24h','Last 24 hours'), ('7d','Last 7 days')] %}
+        <option value="{{ value }}"{% if window == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button class="button" type="submit">Update metrics</button>
+    </form>
+    <p>Across commits in {{ repository }}, within the latest 5,000 recorded operations on this installation.</p>
+    <dl class="metrics">
+      {% for label, value in [
+        ('Operations', totals.operations), ('Failed operations', totals.failures),
+        ('Mean operation latency', ((totals.duration_ms / totals.operations)|round(1)|string + ' ms') if totals.operations else 'Unavailable'),
+        ('Cache hits / misses', totals.cache_hits|string + ' / ' + totals.cache_misses|string),
+        ('OpenAI HTTP attempts', totals.openai_calls), ('Failed model operations', totals.provider_failures),
+        ('Reported tokens', totals.reported_tokens if totals.reported_tokens is not none else 'Unknown'),
+        ('Attempts without token usage', totals.calls_without_usage), ('Retries', totals.retries)] %}
+      <div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>
+      {% endfor %}
+    </dl>
+  </section>
+  <section class="panel guide" aria-labelledby="jobs-title">
+    <h2 id="jobs-title">Recent import jobs</h2>
+    {% for job in jobs %}
+    <details><summary>Job {{ job.id }} · {{ job.status }} · {{ job.updated_at }}</summary>
+      {% if job.sha %}<p>Commit <code>{{ job.sha }}</code></p>{% endif %}
+      <ul>{% for event in job_events[job.id] %}
+        <li>{{ event.operation }} · {{ 'Succeeded' if event.metrics.success else 'Failed' }} · {{ event.duration_ms }} ms · {{ event.timestamp|utc }} UTC</li>
+      {% else %}<li>No recorded stages in this window.</li>{% endfor %}</ul>
+    </details>
+    {% else %}<p>No import jobs recorded for this repository.</p>{% endfor %}
+  </section>
+  <section class="panel guide" aria-labelledby="resources-title">
+    <h2 id="resources-title">Local process and storage</h2>
+    <p>Sampled every minute while RepoPilot is running. Latest 60 samples in this window. CPU is measured per core. Storage covers all repositories.</p>
+    {% if samples %}
+    <div class="sample-table" tabindex="0" role="region" aria-label="Resource samples">
+      <table><thead><tr><th scope="col">Time (UTC)</th><th scope="col">CPU</th><th scope="col">Resident memory</th><th scope="col">SQLite</th><th scope="col">Chroma</th></tr></thead>
+        <tbody>{% for sample in samples %}
+          <tr><th scope="row">{{ sample.timestamp|utc }}</th><td>{{ reading(sample.cpu, '%') }}</td><td>{{ reading(sample.rss, 'MiB') }}</td><td>{{ reading(sample.sqlite, 'MiB') }}</td><td>{{ reading(sample.chroma, 'MiB') }}</td></tr>
+        {% endfor %}</tbody>
+      </table>
+    </div>
+    {% else %}<p>No resource samples available in this window.</p>{% endif %}
+  </section>
+</div>

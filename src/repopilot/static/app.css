@@ -10,6 +10,16 @@
   background: var(--bg);
   color: var(--text);
 }
+.observability { display: grid; gap: 1rem; }
+.observability > section { min-width: 0; max-width: none; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .8rem; }
+.metrics div { border-top: 1px solid var(--line); padding: .55rem 0; }
+.metrics dt { color: var(--muted); font-size: .88rem; }
+.metrics dd { margin: .25rem 0 0; font: 600 1.2rem/1.4 monospace; }
+.observability details { padding: .45rem 0; overflow-wrap: anywhere; }
+.sample-table { max-height: 25rem; overflow: auto; }
+.sample-table table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.sample-table th, .sample-table td { text-align: left; padding: .45rem .7rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
 * { box-sizing: border-box; }
 body { margin: 0; }
 a { color: var(--accent); text-decoration: none; }

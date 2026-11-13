@@ -289,11 +289,16 @@ class StateStore:
             raise KeyError(answer_id)
         return row[0], row[1]
 
-    def recent_imports(self) -> list[Job]:
+    def recent_imports(self, repository: str | None = None) -> list[Job]:
         with self._connection() as db:
             return [
                 Job(**row)
-                for row in db.execute("SELECT * FROM jobs ORDER BY id DESC LIMIT 20")
+                for row in db.execute(
+                    "SELECT jobs.* FROM jobs LEFT JOIN import_sources s ON s.job_id=jobs.id "
+                    "WHERE ? IS NULL OR jobs.repository=? OR s.full_name=? COLLATE NOCASE "
+                    "ORDER BY jobs.id DESC LIMIT 20",
+                    (repository, repository, repository),
+                )
             ]
 
     def start(self, job_id: int) -> None:
