@@ -27,7 +27,7 @@ from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
 from repopilot.module_graph import arrow
 from repopilot.patches import dependency_fix
 from repopilot.references import ReferenceIndex
-from repopilot.scoring import Scores, assess, easier_first
+from repopilot.scoring import RUBRIC, Scores, assess, easier_first, issue_revision
 from repopilot.search import QUERY_LIMIT, LexicalSearch
 from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
@@ -199,6 +199,7 @@ def create_app(
         status_code: int = 200,
         component: str = "",
         sort: str = "",
+        revision: int | None = None,
     ) -> HTMLResponse:
         repository = issue_repo(owner, repo, sha)
         queue = issue_pages.read(repository)
@@ -221,6 +222,26 @@ def create_app(
         )
         if number is not None and selected is None:
             raise HTTPException(404, "Issue not found in the current selection")
+        history = scores.history(repository, selected.id) if selected else []
+        displayed = None
+        previous = None
+        content_key = issue_revision(selected) if selected else ""
+        for index, entry in enumerate(history):
+            matches = (
+                entry.id == revision
+                if revision is not None
+                else (
+                    entry.sha == sha
+                    and entry.issue_revision == content_key
+                    and entry.score.rubric == RUBRIC
+                )
+            )
+            if matches:
+                displayed = entry
+                previous = history[index + 1] if index + 1 < len(history) else None
+                break
+        if revision is not None and displayed is None:
+            raise HTTPException(404, "Assessment revision not found")
         now = clock()
         paths = {"owner": owner, "repo": repo, "sha": sha}
         next_time = None
@@ -247,6 +268,9 @@ def create_app(
                 {c for score in results.values() for c in score.components}
             ),
             scores=results,
+            revisions=history,
+            displayed=displayed,
+            previous=previous,
             score_url=request.url_for("score_issue", **paths),
             error=error,
             labels=sorted({name for item in queue.issues for name in item.labels}),
@@ -270,9 +294,18 @@ def create_app(
         number: int | None = None,
         component: str = "",
         sort: str = "",
+        revision: int | None = None,
     ) -> HTMLResponse:
         return issue_page(
-            request, owner, repo, sha, label, number, component=component, sort=sort
+            request,
+            owner,
+            repo,
+            sha,
+            label,
+            number,
+            component=component,
+            sort=sort,
+            revision=revision,
         )
 
     @app.post(issue_path + "/score", dependencies=[Depends(protect)])
@@ -289,17 +322,20 @@ def create_app(
         )
         if issue is None:
             raise HTTPException(404, "Issue not found")
-        if not scores.current(repository, sha, (issue,)):
-            snapshot = engine.cache.open(repository, sha)
-            score = assess(
+        snapshot = engine.cache.open(repository, sha)
+        scores.evaluate(
+            repository,
+            sha,
+            issue,
+            lambda: assess(
                 snapshot,
                 architecture.artifacts.python(snapshot),
                 repository,
                 sha,
                 issue,
                 model,
-            )
-            scores.save(repository, sha, issue, score)
+            ),
+        )
         return RedirectResponse(
             str(
                 request.url_for(

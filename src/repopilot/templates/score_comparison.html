@@ -1,0 +1,21 @@
+<section aria-label="Assessment comparison">
+  <h3>Assessment comparison</h3>
+  <p>Revision {{ displayed.id }} · {{ displayed.title or selected.title }} · <code>{{ displayed.sha[:8] }}</code> · {{ displayed.score.rubric }}
+    {% if displayed.evaluated_at %}· <time>{{ displayed.evaluated_at }}</time>{% endif %}</p>
+  {% if previous %}
+    <p>Previous score: {{ previous.score.score if previous.score.score is not none else 'Unknown' }} ·
+       New score: {{ displayed.score.score if displayed.score.score is not none else 'Unknown' }}</p>
+    {% if previous.issue_revision != displayed.issue_revision %}<p>The issue content changed.</p>{% endif %}
+    {% if previous.score.rubric != displayed.score.rubric %}<p>The scoring rubric changed.</p>{% endif %}
+    <ul>{% for name, before, after in displayed.changes(previous) %}
+      <li><strong>{{ name }}</strong><p>Previous: {{ before.reason if before else 'Unavailable' }}{% if before %} (+{{ before.points }}){% endif %}</p>
+      <p>Current: {{ after.reason if after else 'Unavailable' }}{% if after %} (+{{ after.points }}){% endif %}</p></li>
+    {% else %}<li>No factor changes.</li>{% endfor %}</ul>
+    {% for label, entry in [('Previous evidence', previous), ('Current evidence', displayed)] %}
+    <details><summary>{{ label }} · {{ entry.sha[:8] }}</summary>
+      {% for source in entry.score.evidence %}<a hx-boost="false" href="{{ source.url }}">{{ source.span.path }} · {{ entry.sha[:8] }}</a><pre><code>{{ source.excerpt }}</code></pre>
+      {% else %}<p>No code reference was resolved.</p>{% endfor %}
+    </details>{% endfor %}
+    {% if previous.score.reasoning.claims|map(attribute='text')|list != displayed.score.reasoning.claims|map(attribute='text')|list %}<p>Model explanation wording changed.</p>{% endif %}
+  {% else %}<p>First evaluation. No previous score.</p>{% endif %}
+</section>

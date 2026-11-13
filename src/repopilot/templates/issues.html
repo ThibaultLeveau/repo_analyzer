@@ -54,15 +54,20 @@
       <p>Updated <time datetime="{{ selected.updated_at }}">{{ selected.updated_at }}</time></p>
       <p class="issue-body">{{ selected.body or 'No description provided.' }}</p>
       <a href="https://github.com/{{ repository }}/issues/{{ selected.number }}" hx-boost="false">Open on GitHub</a>
-      {% if selected.id in scores %}
-        {% set score = scores[selected.id] %}
+      {% if displayed %}
+        {% set score = displayed.score %}
         {% include "assessment.html" %}
-      {% else %}
+        {% include "score_comparison.html" %}
+      {% endif %}
+      {% if revisions %}
+        <details><summary>Assessment history ({{ revisions|length }})</summary><ul>
+        {% for entry in revisions %}<li><a href="{{ issue_url.include_query_params(number=selected.number, revision=entry.id) }}">Revision {{ entry.id }} · {{ entry.sha[:8] }} · {{ entry.score.difficulty }}</a></li>{% endfor %}
+        </ul></details>
+      {% endif %}
         <form method="post" action="{{ score_url }}" hx-boost="false">
           <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="number" value="{{ selected.number }}">
-          <button class="button" type="submit">Assess difficulty</button>
+          <button class="button" type="submit">{{ 'Re-evaluate difficulty' if revisions else 'Assess difficulty' }}</button>
         </form>
-      {% endif %}
     {% endif %}
   </section>
 </div>
