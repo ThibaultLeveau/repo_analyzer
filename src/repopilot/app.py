@@ -28,7 +28,7 @@ from repopilot.module_graph import arrow
 from repopilot.patches import dependency_fix
 from repopilot.references import ReferenceIndex
 from repopilot.scoring import RUBRIC, Scores, assess, easier_first, issue_revision
-from repopilot.search import QUERY_LIMIT, LexicalSearch
+from repopilot.search import QUERY_LIMIT
 from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
 
@@ -614,10 +614,6 @@ def create_app(
             },
         )
 
-    @lru_cache(maxsize=2)
-    def lexical_index(repository: str, sha: str) -> LexicalSearch:
-        return LexicalSearch(engine.cache.open(repository, sha))
-
     @lru_cache(maxsize=1)
     def vector_index() -> "VectorIndex":
         from repopilot.vectors import VectorIndex
@@ -658,7 +654,7 @@ def create_app(
         if len(q) > QUERY_LIMIT:
             error = f"Enter at most {QUERY_LIMIT} characters."
         elif q.strip():
-            hits = lexical_index(repository, sha).search(q)
+            hits = questions().retriever.retrieve(repository, sha, q).hits()
         return page(
             request,
             "Search",
