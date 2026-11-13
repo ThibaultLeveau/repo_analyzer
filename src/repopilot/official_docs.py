@@ -1,3 +1,4 @@
+import json
 import re
 import sqlite3
 import time
@@ -193,22 +194,36 @@ class OfficialDocs:
         return DocPage(package, version, edition, fetched, stale, error, chunks)
 
     def search(
-        self, repo: str, sha: str, query: str, limit: int = 6
+        self,
+        repo: str,
+        sha: str,
+        query: str,
+        limit: int = 6,
+        packages: tuple[str, ...] = (),
     ) -> list[tuple[str, str, str, float, Excerpt]]:
         terms = list(dict.fromkeys(re.findall(r"\w+", query[:500])))[:24]
-        if not terms:
+        if not terms and not packages:
             return []
         with closing(sqlite3.connect(self.path)) as db:
             rows = db.execute(
-                """SELECT package,version,edition,fetched,title,section,url,text FROM sections
-                   JOIN pages ON pages.id=sections.page WHERE sections MATCH ?
-                   AND repo=? AND sha=? AND error='' AND fetched>?
-                   ORDER BY rank,sections.rowid LIMIT ?""",
+                """WITH hits AS (
+                       SELECT rowid,rank AS score FROM sections WHERE sections MATCH ?
+                       UNION ALL SELECT rowid,0 FROM sections WHERE ?)
+                   SELECT package,version,edition,fetched,title,section,url,text FROM hits
+                   JOIN sections ON sections.rowid=hits.rowid JOIN pages ON pages.id=sections.page
+                   WHERE repo=? AND sha=? AND error='' AND fetched>?
+                   AND (? OR package IN (SELECT value FROM json_each(?)))
+                   ORDER BY CASE WHEN version GLOB '==[0-9]*' AND
+                     (substr(version,3)=edition OR substr(version,3) LIKE edition||'.%')
+                     THEN 0 ELSE 1 END, hits.score,sections.rowid LIMIT ?""",
                 (
-                    " OR ".join(f'"{term}"' for term in terms),
+                    " OR ".join(f'"{term}"' for term in terms) or '""',
+                    not terms,
                     repo.lower(),
                     sha,
                     self.clock() - FRESH,
+                    not packages,
+                    json.dumps(packages),
                     max(0, min(limit, MAX_CHUNKS)),
                 ),
             )

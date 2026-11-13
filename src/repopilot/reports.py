@@ -186,6 +186,10 @@ def build_report(
                     + tuple(
                         Citation(f"{s.label} · {s.updated_at}", None, None, s.url)
                         for s in claim.history
+                    )
+                    + tuple(
+                        Citation(f"Official documentation · {s.package} · {s.edition} · {s.section}", None, None, s.url)
+                        for s in claim.documentation
                     ),
                     timestamp,
                 )

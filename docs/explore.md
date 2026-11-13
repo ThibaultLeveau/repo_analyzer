@@ -12,6 +12,14 @@
    An insufficient-evidence result means the available excerpts could not support
    an answer.
 
+Ask can combine repository observations, dated GitHub records and indexed
+publisher guidance. For example, ask “How does our code load YAML, and what
+do the PyYAML docs recommend?” after indexing PyYAML in **Dependencies**.
+Follow **Open cited lines** for the implementation or **Open official
+documentation section** for the publisher's guidance. When a requested
+source is unavailable, the answer identifies that gap. Historical questions
+use the records loaded from the **Issues** view.
+
 In the [Catalog test fixture](https://github.com/ThibaultLeveau/repo_analyzer/blob/main/tests/journey_fixture.py),
 searching for `load_catalog` leads to its definition in `src/catalog.py`,
 lines 4–5. Line 5 calls `yaml.safe_load(source)`. Its test appears in

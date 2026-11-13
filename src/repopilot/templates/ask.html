@@ -12,10 +12,21 @@
   </form>
   {% if saved %}
   {% set answer = saved[1] %}
+  {% for notice in answer.notices %}<p>{{ notice }}</p>{% endfor %}
   {% if answer.status == "ok" %}
     <h3>Answer</h3>
     {% for claim in answer.claims %}
+      {% if claim.documentation %}<h4>Official documentation</h4>
+      {% elif claim.history %}<h4>GitHub history</h4>
+      {% else %}<h4>Repository observation</h4>{% endif %}
       <p>{{ claim.text }}</p>
+      {% for item in claim.documentation %}
+      <details class="answer-source" open>
+        <summary>{{ item.title }} · {{ item.section }}</summary>
+        <p>{{ item.package }} · Declared {{ item.version }} · Documentation edition {{ item.edition }} · Fetched {{ item.observed_at|utc }} UTC</p>
+        <a hx-boost="false" href="{{ item.url }}">Open official documentation section</a>
+      </details>
+      {% endfor %}
       {% for item in claim.history %}
       <details class="answer-source" open>
         <summary>{{ item.label }} · {{ item.timestamp }}</summary>
@@ -40,10 +51,13 @@
       "timeout": "The model timed out. Try again.",
       "provider_error": "The model is unavailable. Try again.",
       "history_unavailable": "No matching GitHub history has been loaded for this snapshot.",
+      "docs_unavailable": "No matching, current official documentation is indexed for this question.",
       "ambiguous_revision": "This short SHA matches several commits. Enter a longer SHA."
     }[answer.status] }}</p>
     {% if answer.status == 'history_unavailable' %}{% set owner, repo = repository.split('/') %}
     <a href="{{ url_for('history_view', owner=owner, repo=repo, sha=sha) }}">Open repository history</a>{% endif %}
+    {% if answer.status == 'docs_unavailable' %}{% set owner, repo = repository.split('/') %}
+    <a href="{{ url_for('dependencies', owner=owner, repo=repo, sha=sha) }}">Choose documentation in Dependencies</a>{% endif %}
   {% endif %}
   {% endif %}
 </section>
