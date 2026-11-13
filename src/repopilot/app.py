@@ -867,7 +867,7 @@ def create_app(
     def questions() -> "Ask":
         from repopilot.ask import Ask
 
-        return Ask(engine.cache, engine.store, vector_index(), model, histories)
+        return Ask(engine.cache, engine.store, vector_index(), model, histories, official_docs)
 
     @app.post("/repos/{owner}/{repo}/{sha}/ask", dependencies=[Depends(protect)])
     def ask_question(
