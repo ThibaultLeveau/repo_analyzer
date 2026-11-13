@@ -1,0 +1,50 @@
+<section id="user-notes" class="panel guide" aria-labelledby="notes-title">
+  <h2 id="notes-title">Project notes</h2>
+  <form method="post" enctype="multipart/form-data" action="{{ note_action }}" hx-boost="false" class="note-upload">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label for="add-note">Drop or choose a Markdown file (128 KiB maximum)</label>
+    <input id="add-note" type="file" name="file" accept=".md,.markdown" required>
+    <button class="button">Add note</button>
+  </form>
+  {% if project_notes %}<ul>{% for item in project_notes %}
+    <li><a href="{{ item.url(repository, sha) }}#user-notes">{{ item.filename }}</a> · {{ item.uploaded|utc }} UTC · <code>{{ item.revision[:8] }}</code></li>
+  {% endfor %}</ul>{% endif %}
+  {% if preview %}
+    {% set item, sections = preview %}
+    <article aria-label="User note preview">
+      <h3>{{ item.filename }}</h3>
+      <p>User note · {{ item.uploaded|utc }} UTC · revision <code>{{ item.revision }}</code>
+      {% if current_note and current_note.revision != item.revision %} · Previous revision{% endif %}</p>
+      <a hx-boost="false" href="{{ url_for('original_attachment', owner=repository.split('/')[0], repo=repository.split('/')[1], sha=sha, note_id=item.id, revision=item.revision) }}">Download original Markdown</a>
+      {% for part in sections %}
+        {% if loop.changed(part.url, part.section) %}<h4{% if part.url %} id="{{ part.url[1:] }}"{% endif %}>{{ part.section }}</h4>{% endif %}
+        <pre class="note-passage">{{ part.text }}</pre>
+      {% endfor %}
+    </article>
+    {% if current_note and current_note.revision == item.revision %}
+    <form method="post" enctype="multipart/form-data" action="{{ note_action }}" hx-boost="false" class="note-upload">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="note_id" value="{{ item.id }}"><input type="hidden" name="revision" value="{{ item.revision }}">
+      <label for="replace-note">Replacement Markdown file</label>
+      <input id="replace-note" type="file" name="file" accept=".md,.markdown" required>
+      <button class="button">Replace note</button>
+    </form>
+    <form method="post" action="{{ remove_action }}" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="note_id" value="{{ item.id }}"><input type="hidden" name="revision" value="{{ item.revision }}">
+      <button class="button">Remove note</button>
+    </form>
+    {% endif %}
+  {% endif %}
+</section>
+<script>
+  document.querySelectorAll(".note-upload").forEach(form => {
+    form.ondragover = event => event.preventDefault();
+    form.ondrop = event => {
+      event.preventDefault();
+      if (event.dataTransfer.files.length === 1) {
+        form.querySelector("input[type=file]").files = event.dataTransfer.files;
+      }
+    };
+  });
+</script>
