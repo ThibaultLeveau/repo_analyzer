@@ -1,0 +1,29 @@
+<p>{{ report.test_files }} conventionally named test {{ 'file' if report.test_files == 1 else 'files' }}.
+  {% if report.coverage %}
+    Reported line coverage: {{ report.coverage[0] }} of {{ report.coverage[1] }} executable lines
+    ({{ (100 * report.coverage[0] / report.coverage[1])|round(1) }}%) in
+    <a href="{{ explorer_url.include_query_params(path='coverage.json') }}">coverage.json</a>. Its run commit is unverified.
+  {% else %}Line coverage is unknown.{% endif %}
+  Test execution status is unknown.
+  {% if report.skipped_modules %}Skipped {{ report.skipped_modules }} unreadable or invalid Python {{ 'module' if report.skipped_modules == 1 else 'modules' }}.{% endif %}
+</p>
+<div class="issue-columns">
+  <section class="panel guide" aria-label="Static findings">
+    <h2>Static findings</h2>
+    <ul>{% for item in report.findings %}<li>
+      <a href="{{ audit_url.include_query_params(finding=item.key) }}"{% if item == selected %} aria-current="page"{% endif %}>{{ item.title }}</a>
+      <small>{{ item.rule }} · {{ item.severity }} · {{ item.span.path }}:{{ item.span.start }}</small>
+    </li>{% else %}<li>No findings from the available static checks.</li>{% endfor %}</ul>
+  </section>
+  {% if selected %}
+  <section class="panel guide issue-detail" aria-label="Annotated source">
+    <h2>{{ selected.title }}</h2>
+    <p>{{ selected.rule }} · {{ selected.severity }}</p>
+    <p>{{ selected.explanation }}</p>
+    <p>{{ selected.limit }}</p>
+    {% set span = selected.span %}
+    <a hx-boost="false" href="{{ explorer_url.include_query_params(path=span.path, line=span.start, end=span.end) }}#L{{ span.start }}">{{ span.path }} · L{{ span.start }}–{{ span.end }}</a>
+    <pre><code>{% for line in excerpt %}{{ span.start + loop.index0 }}  {{ line }}{% if not loop.last %}{{ '\n' }}{% endif %}{% endfor %}</code></pre>
+  </section>
+  {% endif %}
+</div>
