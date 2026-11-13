@@ -75,6 +75,19 @@ class Neighbor:
     distance: float
 
 
+def _persistent_client(path: Path) -> Client:
+    return cast(
+        Client,
+        chromadb.PersistentClient(
+            path=str(path), settings=Settings(anonymized_telemetry=False)
+        ),
+    )
+
+
+def initialize_chroma(directory: Path) -> None:
+    _persistent_client(directory / "chroma").close()
+
+
 class VectorIndex:
     def __init__(
         self,
@@ -93,12 +106,7 @@ class VectorIndex:
         return "snapshot-" + hashlib.sha256(json.dumps(key).encode()).hexdigest()
 
     def _client(self) -> Client:
-        return cast(
-            Client,
-            chromadb.PersistentClient(
-                path=str(self.directory), settings=Settings(anonymized_telemetry=False)
-            ),
-        )
+        return _persistent_client(self.directory)
 
     def _embed(self, texts: list[str]) -> list[Sequence[float] | Sequence[int]]:
         vectors = self.embedder.embed(texts, self.config)

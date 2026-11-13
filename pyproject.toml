@@ -33,6 +33,7 @@ dev = [
     "pytest>=8,<10",
     "pytest-playwright>=0.7,<1",
     "ruff>=0.11,<1",
+    "setuptools>=77",
     "types-PyYAML>=6,<7",
     "starlette>=1.10,<2",
 ]
@@ -49,7 +50,7 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests"]
+files = ["run.py", "src", "tests"]
 
 [tool.ruff]
 target-version = "py312"
