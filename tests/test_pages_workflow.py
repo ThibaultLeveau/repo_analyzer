@@ -11,6 +11,7 @@ def test_only_default_branch_build_can_deploy() -> None:
     )
     assert set(workflow["on"]) == {"push", "pull_request"}
     assert workflow["on"]["push"]["branches"] == ["main"]
+    assert workflow["on"]["push"]["tags"] == ["v*"]
     assert workflow["permissions"] == {"contents": "read"}
     build, deploy = workflow["jobs"]["build"], workflow["jobs"]["deploy"]
     assert "permissions" not in build and "if" not in build
