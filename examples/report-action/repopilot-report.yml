@@ -1,0 +1,83 @@
+name: RepoPilot report
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      comment:
+        description: Publish or update the report link on a trusted pull request
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install pinned RepoPilot
+        run: python -m pip install 'repopilot @ git+https://github.com/ThibaultLeveau/repo_analyzer.git@ba762fda378a3fbba7d76ab3204c43ab89bc744a'
+      - name: Generate report
+        env:
+          REPO_URL: https://github.com/${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: repopilot analyze "$REPO_URL" --sha "$REVISION" --format json --output "repopilot-report.json"
+      - name: Upload report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: repopilot-report
+          path: repopilot-report.json
+          if-no-files-found: error
+          overwrite: true
+
+  comment:
+    needs: report
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (inputs.comment == true || vars.REPOPILOT_COMMENT == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    concurrency:
+      group: repopilot-comment-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Update report link
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVISION: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          number = int(os.environ["PR_NUMBER"])
+          run_id = int(os.environ["GITHUB_RUN_ID"])
+          endpoint = f"repos/{repo}/issues/{number}/comments"
+          marker = "<!-- repopilot-report -->"
+          pages = subprocess.check_output(["gh", "api", "--paginate", "--slurp", endpoint])
+          existing = next((c["id"] for page in json.loads(pages) for c in page
+                           if c["user"]["login"] == "github-actions[bot]" and c["body"].startswith(marker + "\n")), None)
+          body = (f"{marker}\nRepoPilot analyzed `{os.environ['REVISION']}`. "
+                  f"[Download the report from the workflow run](https://github.com/{repo}/actions/runs/{run_id}).")
+          target = f"repos/{repo}/issues/comments/{int(existing)}" if existing else endpoint
+          with TemporaryDirectory() as tmp:
+              payload = Path(tmp) / "comment.json"
+              payload.write_text(json.dumps({"body": body}), encoding="utf-8")
+              subprocess.run(["gh", "api", "--silent", "--method", "PATCH" if existing else "POST",
+                              target, "--input", str(payload)], check=True)
+          PY

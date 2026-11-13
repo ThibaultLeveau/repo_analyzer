@@ -4,43 +4,10 @@ import subprocess
 import sysconfig
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 from journey_fixture import FILES, REPO, Catalog
 
 from repopilot.app import create_app
-
-
-@pytest.fixture
-def cli_env(tmp_path: Path) -> dict[str, str]:
-    # Install the same offline GitHub transport in the child interpreter.
-    (tmp_path / "sitecustomize.py").write_text(
-        """import os
-import httpx2
-from journey_fixture import Catalog, FILES
-old = Catalog()
-new = Catalog(FILES | {"next.txt": "second revision"})
-def respond(request):
-    if os.environ.get("REPOPILOT_FIXTURE_OFFLINE"):
-        raise AssertionError("Unexpected network request")
-    if request.url.path.endswith("/commits/" + old.sha):
-        return httpx2.Response(200, json={"sha":old.sha})
-    if request.url.host == "codeload.github.com" and old.sha in request.url.path:
-        return old.respond(request)
-    return new.respond(request)
-original = httpx2.Client.__init__
-def init(self, *args, **kwargs):
-    kwargs["transport"] = httpx2.MockTransport(respond)
-    original(self, *args, **kwargs)
-httpx2.Client.__init__ = init
-""",
-        encoding="utf-8",
-    )
-    env = dict(os.environ)
-    env.pop("OPENAI_API_KEY", None)
-    env["PYTHONPATH"] = os.pathsep.join((str(tmp_path), str(Path(__file__).parent)))
-    env["REPOPILOT_DATA_DIR"] = str(tmp_path / "analysis cache")
-    return env
 
 
 def run_cli(env: dict[str, str], *args: str) -> subprocess.CompletedProcess[bytes]:
