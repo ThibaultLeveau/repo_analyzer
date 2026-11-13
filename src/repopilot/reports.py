@@ -21,8 +21,8 @@ MEDIA_TYPES = {"json": "application/json", "md": "text/markdown", "html": "text/
 @dataclass(frozen=True)
 class Citation:
     path: str
-    start: int
-    end: int
+    start: int | None
+    end: int | None
     url: str
 
 
@@ -73,7 +73,11 @@ class Report:
                 if entry.timestamp:
                     lines.extend([_literal(entry.timestamp), ""])
                 for source in entry.evidence:
-                    label = _literal(f"{source.path} · L{source.start}–{source.end}")
+                    label = _literal(
+                        f"{source.path} · L{source.start}–{source.end}"
+                        if source.start is not None
+                        else source.path
+                    )
                     lines.append(f"[{label}](<{source.url}>)")
                 lines.append("")
         markdown = "\n".join(lines)
@@ -178,7 +182,11 @@ def build_report(
                 Entry(
                     question,
                     claim.text,
-                    tuple(cite(s.span) for s in claim.sources),
+                    tuple(cite(s.span) for s in claim.sources)
+                    + tuple(
+                        Citation(f"{s.label} · {s.updated_at}", None, None, s.url)
+                        for s in claim.history
+                    ),
                     timestamp,
                 )
                 for claim in answer.claims

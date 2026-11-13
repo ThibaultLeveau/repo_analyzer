@@ -334,6 +334,16 @@ class History:
                 CREATE TABLE IF NOT EXISTS observations(repo TEXT,sha TEXT,issue INTEGER,payload TEXT NOT NULL,PRIMARY KEY(repo,sha,issue));
             """)
 
+    def observations(self, name: str, sha: str) -> list[Observation]:
+        with closing(sqlite3.connect(self.path)) as db:
+            return [
+                Observation.model_validate_json(row[0])
+                for row in db.execute(
+                    "SELECT payload FROM observations WHERE repo=? AND sha=? ORDER BY issue",
+                    (name.lower(), sha),
+                )
+            ]
+
     def read(self, name: str, sha: str, issue: int | None = None) -> Observation | None:
         with closing(sqlite3.connect(self.path)) as db:
             row = db.execute(

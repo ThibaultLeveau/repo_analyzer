@@ -824,7 +824,7 @@ def create_app(
     def questions() -> "Ask":
         from repopilot.ask import Ask
 
-        return Ask(engine.cache, engine.store, vector_index(), model)
+        return Ask(engine.cache, engine.store, vector_index(), model, histories)
 
     @app.post("/repos/{owner}/{repo}/{sha}/ask", dependencies=[Depends(protect)])
     def ask_question(
@@ -834,9 +834,10 @@ def create_app(
         sha: str,
         question: Annotated[str, Form()],
         path: Annotated[str, Form()] = "",
+        target: Annotated[str, Form(max_length=80)] = "",
     ) -> Response:
         try:
-            answer_id = questions().run(f"{owner}/{repo}", sha, question, path)
+            answer_id = questions().run(f"{owner}/{repo}", sha, question, path, target)
         except (FileNotFoundError, SnapshotError, GitHubError) as exc:
             raise HTTPException(404, "Snapshot not found") from exc
         except ValueError as exc:

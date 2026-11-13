@@ -3,6 +3,8 @@
   <form method="post" action="{{ ask_url }}" hx-post="{{ ask_url }}" hx-indicator="#ask-loading" hx-disabled-elt="find button">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <input type="hidden" name="path" value="{{ path }}">
+    <label for="ask-target">History reference (optional)</label>
+    <input id="ask-target" name="target" maxlength="80" placeholder="#42, PR #12, commit SHA or timeline">
     <label for="ask-question">Question about this commit</label>
     <textarea id="ask-question" name="question" required maxlength="1000" rows="2">{{ saved[0] if saved else '' }}</textarea>
     <button class="button" type="submit">Ask</button>
@@ -14,6 +16,14 @@
     <h3>Answer</h3>
     {% for claim in answer.claims %}
       <p>{{ claim.text }}</p>
+      {% for item in claim.history %}
+      <details class="answer-source" open>
+        <summary>{{ item.label }} · {{ item.timestamp }}</summary>
+        <p>{{ item.author or 'Unknown author' }} · Updated {{ item.updated_at }} · Observed {{ item.observed_at|utc }} UTC</p>
+        <pre><code>{{ item.excerpt }}</code></pre>
+        <a href="{{ item.url }}" hx-boost="false">Open dated GitHub source</a>
+      </details>
+      {% endfor %}
       {% for source in claim.sources %}
       <details class="answer-source" open>
         <summary>{{ source.span.path }} · L{{ source.span.start }}–{{ source.span.end }}</summary>
@@ -28,8 +38,12 @@
       "missing_key": "Set OPENAI_API_KEY to generate an answer.",
       "invalid_response": "The model returned an answer with invalid structure or citations.",
       "timeout": "The model timed out. Try again.",
-      "provider_error": "The model is unavailable. Try again."
+      "provider_error": "The model is unavailable. Try again.",
+      "history_unavailable": "No matching GitHub history has been loaded for this snapshot.",
+      "ambiguous_revision": "This short SHA matches several commits. Enter a longer SHA."
     }[answer.status] }}</p>
+    {% if answer.status == 'history_unavailable' %}{% set owner, repo = repository.split('/') %}
+    <a href="{{ url_for('history_view', owner=owner, repo=repo, sha=sha) }}">Open repository history</a>{% endif %}
   {% endif %}
   {% endif %}
 </section>
