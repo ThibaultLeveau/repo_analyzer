@@ -43,7 +43,7 @@ class Artifacts:
     def __init__(self, versions: AnalysisVersions = AnalysisVersions()) -> None:
         self.versions = versions
 
-    def _read[T](
+    def read[T](
         self,
         directory: Path,
         kind: str,
@@ -52,7 +52,7 @@ class Artifacts:
         compute: Callable[[], T],
     ) -> T:
         with (
-            FileLock(directory / f"{kind}.lock"),
+            FileLock(directory / f"{kind.partition(':')[0]}.lock"),
             closing(sqlite3.connect(directory / "analysis.db")) as db,
         ):
             db.execute(
@@ -76,7 +76,7 @@ class Artifacts:
             return value
 
     def python(self, snapshot: SourceSnapshot) -> PythonFacts:
-        return self._read(
+        return self.read(
             snapshot.database.parent,
             "python",
             str(self.versions.python),
@@ -86,7 +86,7 @@ class Artifacts:
 
     def dependencies(self, snapshot: SourceSnapshot) -> DependencyReport:
         version = f"{self.versions.python}.{self.versions.dependencies}"
-        return self._read(
+        return self.read(
             snapshot.database.parent,
             "dependencies",
             version,
@@ -95,7 +95,7 @@ class Artifacts:
         )
 
     def setup(self, snapshot: SourceSnapshot) -> SetupEvidence:
-        return self._read(
+        return self.read(
             snapshot.database.parent,
             "setup",
             str(self.versions.setup),
