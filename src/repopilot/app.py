@@ -27,6 +27,7 @@ from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
 from repopilot.module_graph import arrow
 from repopilot.patches import dependency_fix
 from repopilot.references import ReferenceIndex
+from repopilot.scoring import Scores, assess, easier_first
 from repopilot.search import QUERY_LIMIT, LexicalSearch
 from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
@@ -51,17 +52,19 @@ def create_app(
     architecture: Architecture
     guides: Guides
     issue_pages: IssuePages
+    scores: Scores
     csrf = secrets.token_urlsafe(32)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        nonlocal engine, architecture, guides, issue_pages
+        nonlocal engine, architecture, guides, issue_pages, scores
         with import_service(
             directory, transport=transport, model=model, embedder=embedder
         ) as engine:
             architecture = engine.architecture
             guides = Guides(architecture)
             issue_pages = IssuePages(directory, engine.client, clock)
+            scores = Scores(directory)
             yield
 
     app = FastAPI(title="RepoPilot", lifespan=lifespan)
@@ -194,10 +197,23 @@ def create_app(
         number: int | None = None,
         error: str = "",
         status_code: int = 200,
+        component: str = "",
+        sort: str = "",
     ) -> HTMLResponse:
         repository = issue_repo(owner, repo, sha)
         queue = issue_pages.read(repository)
-        items = [i for i in queue.issues if not label or label in i.labels]
+        results = scores.current(repository, sha, queue.issues)
+        items = [
+            i
+            for i in queue.issues
+            if (not label or label in i.labels)
+            and (
+                not component
+                or (i.id in results and component in results[i.id].components)
+            )
+        ]
+        if sort == "difficulty":
+            items = easier_first(items, results)
         selected = (
             next((i for i in items if i.number == number), None)
             if number is not None
@@ -225,6 +241,13 @@ def create_app(
             items=items,
             selected=selected,
             label=label,
+            component=component,
+            sort=sort,
+            components=sorted(
+                {c for score in results.values() for c in score.components}
+            ),
+            scores=results,
+            score_url=request.url_for("score_issue", **paths),
             error=error,
             labels=sorted({name for item in queue.issues for name in item.labels}),
             next_time=next_time,
@@ -245,8 +268,46 @@ def create_app(
         sha: str,
         label: str = "",
         number: int | None = None,
+        component: str = "",
+        sort: str = "",
     ) -> HTMLResponse:
-        return issue_page(request, owner, repo, sha, label, number)
+        return issue_page(
+            request, owner, repo, sha, label, number, component=component, sort=sort
+        )
+
+    @app.post(issue_path + "/score", dependencies=[Depends(protect)])
+    def score_issue(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        number: Annotated[int, Form()],
+    ) -> Response:
+        repository = issue_repo(owner, repo, sha)
+        issue = next(
+            (i for i in issue_pages.read(repository).issues if i.number == number), None
+        )
+        if issue is None:
+            raise HTTPException(404, "Issue not found")
+        if not scores.current(repository, sha, (issue,)):
+            snapshot = engine.cache.open(repository, sha)
+            score = assess(
+                snapshot,
+                architecture.artifacts.python(snapshot),
+                repository,
+                sha,
+                issue,
+                model,
+            )
+            scores.save(repository, sha, issue, score)
+        return RedirectResponse(
+            str(
+                request.url_for(
+                    "issues_view", owner=owner, repo=repo, sha=sha
+                ).include_query_params(number=number)
+            ),
+            status_code=303,
+        )
 
     @app.post(issue_path + "/load", dependencies=[Depends(protect)])
     def update_issues(
