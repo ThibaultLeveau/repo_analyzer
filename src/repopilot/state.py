@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS module_roles (
     description TEXT NOT NULL, ranges TEXT NOT NULL,
     PRIMARY KEY (repository, sha, model, path)
 );
+CREATE TABLE IF NOT EXISTS guide_notes (
+    repository TEXT COLLATE NOCASE, sha TEXT, model TEXT, notes TEXT NOT NULL,
+    PRIMARY KEY (repository, sha, model)
+);
 CREATE TRIGGER IF NOT EXISTS job_transition_time AFTER UPDATE OF status ON jobs
 BEGIN
     UPDATE jobs SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = NEW.id;
@@ -194,6 +198,25 @@ class StateStore:
                     (repository, sha, model, path, description, json.dumps(ranges))
                     for path, (description, ranges) in roles.items()
                 ),
+            )
+
+    def guide_notes(
+        self, repository: str, sha: str, model: str
+    ) -> list[tuple[str, list[str]]]:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT notes FROM guide_notes WHERE repository=? AND sha=? AND model=?",
+                (repository, sha, model),
+            ).fetchone()
+        return [(text, keys) for text, keys in json.loads(row[0])] if row else []
+
+    def save_guide_notes(
+        self, repository: str, sha: str, model: str, notes: list[tuple[str, list[str]]]
+    ) -> None:
+        with self._connection(write=True) as db:
+            db.execute(
+                "INSERT OR REPLACE INTO guide_notes VALUES (?,?,?,?)",
+                (repository, sha, model, json.dumps(notes)),
             )
 
     def recent_imports(self) -> list[Job]:

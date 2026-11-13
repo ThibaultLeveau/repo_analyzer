@@ -18,6 +18,7 @@ from repopilot.dependencies import DependencyReport, analyze_dependencies
 from repopilot.explorer import PAGE_LINES, browse
 from repopilot.github import GitHubError
 from repopilot.grounding import StructuredModel
+from repopilot.guide import Guide, Guides
 from repopilot.imports import ImportService, import_service
 from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
@@ -34,13 +35,15 @@ def create_app(
     )
     engine: ImportService
     architecture: Architecture
+    guides: Guides
     csrf = secrets.token_urlsafe(32)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        nonlocal engine, architecture
+        nonlocal engine, architecture, guides
         with import_service(directory, transport=transport) as engine:
             architecture = Architecture(engine.cache, engine.store, model)
+            guides = Guides(architecture)
             yield
 
     app = FastAPI(title="RepoPilot", lifespan=lifespan)
@@ -219,6 +222,53 @@ def create_app(
         target = request.url_for("architecture_view", owner=owner, repo=repo, sha=sha)
         return RedirectResponse(
             str(target.include_query_params(path=path, notice=status)), status_code=303
+        )
+
+    def snapshot_guide(owner: str, repo: str, sha: str) -> Guide:
+        try:
+            return guides.get(f"{owner}/{repo}", sha)
+        except (FileNotFoundError, GitHubError, SnapshotError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+
+    guide_path = "/repos/{owner}/{repo}/{sha}/getting-started"
+
+    @app.get(guide_path, response_class=HTMLResponse)
+    def getting_started(
+        request: Request, owner: str, repo: str, sha: str, notice: str = ""
+    ) -> HTMLResponse:
+        guide = snapshot_guide(owner, repo, sha)
+        paths = {"owner": owner, "repo": repo, "sha": sha}
+        return page(
+            request,
+            "Getting Started",
+            repository=guide.repository,
+            sha=sha,
+            guide=guide,
+            notice=notice,
+            explorer_url=request.url_for("explorer", **paths),
+            download_url=request.url_for("download_guide", **paths),
+            generate_url=request.url_for("generate_guide", **paths),
+        )
+
+    @app.post(guide_path + "/notes", dependencies=[Depends(protect)])
+    def generate_guide(request: Request, owner: str, repo: str, sha: str) -> Response:
+        try:
+            status = guides.generate(f"{owner}/{repo}", sha)
+        except (FileNotFoundError, GitHubError, SnapshotError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        target = request.url_for("getting_started", owner=owner, repo=repo, sha=sha)
+        return RedirectResponse(
+            str(target.include_query_params(notice=status)), status_code=303
+        )
+
+    @app.get(guide_path + ".md")
+    def download_guide(owner: str, repo: str, sha: str) -> Response:
+        return Response(
+            snapshot_guide(owner, repo, sha).markdown(),
+            media_type="text/markdown",
+            headers={
+                "Content-Disposition": 'attachment; filename="getting-started.md"'
+            },
         )
 
     @app.get("/repos/{owner}/{repo}/{sha}/code", response_class=HTMLResponse)

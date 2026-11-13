@@ -1,0 +1,52 @@
+{% macro source_link(source) -%}
+<a href="{{ source.url }}" hx-boost="false">{{ source.span.path }} · L{{ source.span.start }}{% if source.span.end != source.span.start %}–{{ source.span.end }}{% endif %}</a>
+{%- endmacro %}
+<div class="form-row guide-actions">
+  <a class="button" href="{{ download_url }}" download hx-boost="false">Download Markdown</a>
+  <form action="{{ generate_url }}" method="post" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="button" type="submit">Generate cited notes</button>
+  </form>
+</div>
+{% if notice == "ok" %}<p role="status">Cited notes saved for this commit.</p>
+{% elif notice == "missing_key" %}<p role="status">Set OPENAI_API_KEY to generate notes. The source-based guide is available below.</p>
+{% elif notice %}<p role="status">No new cited notes were available. The source-based guide is available below.</p>{% endif %}
+<div class="onboarding">
+  {% for section in guide.sections %}
+  <section class="panel guide" aria-labelledby="section-{{ loop.index }}">
+    <h2 id="section-{{ loop.index }}">{{ section.title }}</h2>
+    {% for note in section.notes %}
+      <p>{{ note.text }} {% for source in note.sources %}{{ source_link(source) }} {% endfor %}</p>
+    {% endfor %}
+    <div class="guide-columns">
+      {% for group, items in section.groups.items() %}
+      <div>
+        <h3>{{ group }}</h3>
+        {% for item in items %}
+        <article>
+          <small>{{ item.caption }}</small>
+          {% if item.command %}
+            <pre><code>{{ item.text }}</code></pre>
+            <button class="copy-command" type="button" aria-live="polite">Copy command</button>
+          {% else %}<p>{{ item.text }}</p>{% endif %}
+          {{ source_link(item.source) }}
+        </article>
+        {% else %}<p>No supporting evidence found.</p>{% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+<script>
+  document.querySelector(".onboarding").onclick = async (event) => {
+    const button = event.target.closest(".copy-command");
+    if (!button) return;
+    try {
+      await navigator.clipboard.writeText(button.closest("article").querySelector("code").textContent);
+      button.textContent = "Copied";
+    } catch {
+      button.textContent = "Copy failed — select the command";
+    }
+  };
+</script>

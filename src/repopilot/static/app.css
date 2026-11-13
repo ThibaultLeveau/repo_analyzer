@@ -79,6 +79,12 @@ button { border: 0; cursor: pointer; font: inherit; }
 .button { display: inline-flex; align-items: center; gap: .8rem; padding: .55rem 1rem; background: var(--accent); color: #072327; border-radius: .35rem; font-weight: 650; }
 .button:hover { background: #abf3f2; }
 .guide { padding: clamp(1rem, 3vw, 2.5rem); }
+.onboarding { display: grid; gap: 1rem; margin-top: 1rem; }
+.guide-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1.25rem; }
+.guide-columns > div { min-width: 0; overflow-wrap: anywhere; }
+.guide-columns article { border-top: 1px solid var(--line); padding: .8rem 0; }
+.guide-columns small { color: var(--muted); }
+.copy-command { padding: .3rem .6rem; margin-right: .4rem; color: var(--text); background: var(--line); border-radius: .25rem; }
 pre, code, kbd { font-family: "Cascadia Code", Consolas, monospace; }
 pre { max-width: 100%; overflow-x: auto; padding: 1rem; background: var(--bg); border: 1px solid var(--line); border-radius: .35rem; color: var(--accent); }
 @media (max-width: 46rem) {
