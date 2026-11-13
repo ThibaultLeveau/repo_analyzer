@@ -19,6 +19,22 @@
 <div class="explorer">
   <aside class="panel file-tree" aria-label="File tree">
     <h2>Files</h2>{{ tree('') }}
+    {% if module %}
+      <section class="symbol-outline" aria-label="Symbol outline">
+        <h2>Symbols</h2>
+        <form method="get" action="{{ explorer_url }}" hx-boost="false">
+          <input type="hidden" name="path" value="{{ path }}">
+          {% if line %}<input type="hidden" name="line" value="{{ line }}">{% endif %}
+          {% if end %}<input type="hidden" name="end" value="{{ end }}">{% endif %}
+          <label for="symbol-filter">Filter symbols</label>
+          <input id="symbol-filter" name="symbol" value="{{ symbol_filter }}">
+          <button type="submit">Filter</button>
+        </form>
+        <ul>{% for item in symbols %}
+          <li><a hx-boost="false" href="{{ explorer_url.include_query_params(path=path, symbol=symbol_filter, line=item.span.start, end=item.span.end) }}#L{{ item.span.start }}"{% if line == item.span.start and end == item.span.end %} aria-current="location"{% endif %}>{{ item.name.removeprefix(module.name ~ '.') }} <small>{{ 'variable' if item.kind == 'assignment' else item.kind }}</small></a></li>
+        {% else %}<li>{{ 'No matching symbols.' if symbol_filter else 'No symbols in this file.' }}</li>{% endfor %}</ul>
+      </section>
+    {% endif %}
   </aside>
   <section class="panel source-pane" aria-label="Source">
     {% if not view.selected %}<p>Select a file from the tree.</p>
@@ -28,12 +44,15 @@
         {% set file_url = explorer_url.include_query_params(path=path) %}
         <div class="source-lines" hx-boost="false">{% for code in view.lines %}
           {% set n = view.first_line + loop.index0 %}
-          <div id="L{{ n }}" class="source-line{% if line and line <= n <= (end or line) %} selected{% endif %}"><a href="{{ file_url.include_query_params(line=n) }}#L{{ n }}" aria-label="Line {{ n }}">{{ n }}</a><code>{{ code }}</code></div>
+          <div id="L{{ n }}" class="source-line{% if line and line <= n <= (end or line) %} selected{% endif %}"><a href="{{ file_url.include_query_params(line=n) }}#L{{ n }}" aria-label="Line {{ n }}">{{ n }}</a><code>{% if view.highlighting %}{% for style, text in view.highlighting[loop.index0] %}{% if style %}<span class="tok-{{ style }}">{{ text }}</span>{% else %}{{ text }}{% endif %}{% endfor %}{% else %}{{ code }}{% endif %}</code></div>
         {% endfor %}</div>
         {% if view.total > page_lines %}<div class="line-paging">
-          {% if view.first_line > 1 %}<a href="{{ file_url.include_query_params(line=view.first_line-page_lines) }}">Previous lines</a>{% endif %}
+          {% set paging_url = file_url.include_query_params(symbol=symbol_filter) %}
+          {% if line %}{% set paging_url = paging_url.include_query_params(line=line, end=end or line) %}{% endif %}
+          {% set current_page = (view.first_line - 1) // page_lines + 1 %}
+          {% if view.first_line > 1 %}<a href="{{ paging_url.include_query_params(source_page=current_page-1) }}">Previous lines</a>{% endif %}
           <span>Lines {{ view.first_line }}–{{ view.first_line + view.lines|length - 1 }} of {{ view.total }}</span>
-          {% if view.first_line + page_lines <= view.total %}<a href="{{ file_url.include_query_params(line=view.first_line+page_lines) }}">Next lines</a>{% endif %}
+          {% if view.first_line + view.lines|length <= view.total %}<a href="{{ paging_url.include_query_params(source_page=current_page+1) }}">Next lines</a>{% endif %}
         </div>{% endif %}
       {% else %}
         <p>{{ {'text': 'This file is empty.', 'binary': 'Binary file. Text preview is unavailable.', 'oversized': 'This file exceeds the text preview limit.', 'special': 'Special entry. Text preview is unavailable.', 'directory': 'Select a file in this directory.'}[view.selected.kind] }}</p>

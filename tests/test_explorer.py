@@ -1,8 +1,56 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from test_manifests import manifest_snapshot
 
 from repopilot.app import create_app
+from repopilot.explorer import browse, highlight_python
+
+
+def test_python_highlighting_preserves_source_and_multiline_state(
+    tmp_path: Path,
+) -> None:
+    lines = [
+        "# démarrage",
+        "",
+        's = """<b>',
+        "λ\t&",
+        '</b>"""',
+        "if x < 2:",
+        "    pass",
+    ]
+    snapshot = manifest_snapshot(
+        tmp_path, {"example.py": "\r\n".join(lines), "plain.xyz": "\n".join(lines)}
+    )
+    source = browse(snapshot, "example.py", None, None)
+    assert [
+        "".join(text for _, text in parts) for parts in source.highlighting
+    ] == lines
+    assert source.highlighting[1] == []
+    assert highlight_python(lines, 3, 4) == [[("string", "λ\t&")]]
+    assert ("keyword", "if") in source.highlighting[5] and (
+        "number",
+        "2",
+    ) in source.highlighting[5]
+    assert browse(snapshot, "plain.xyz", None, None).highlighting == []
+    incomplete = ["class Incomplete:", "    value = ("]
+    result = highlight_python(incomplete, 0, 2)
+    assert ["".join(text for _, text in parts) for parts in result] == incomplete
+
+
+def test_selected_symbol_spanning_page_boundary(tmp_path: Path) -> None:
+    snapshot = manifest_snapshot(
+        tmp_path,
+        {
+            "example.py": "\n" * 198
+            + "def begin():\n    x=1\n    return x\n"
+            + "\n" * 250
+        },
+    )
+    first = browse(snapshot, "example.py", 199, 201)
+    assert first.first_line == 1 and first.lines[-1] == "    return x"
+    following = browse(snapshot, "example.py", 199, 420, 2)
+    assert following.first_line == 201 and len(following.lines) == 200
 
 
 def test_tree_and_windowed_source(tmp_path: Path, explorer_url: str) -> None:

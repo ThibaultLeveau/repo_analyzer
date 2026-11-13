@@ -33,6 +33,7 @@ def test_load_filter_extend_and_retain_cached_issues(
     page.get_by_label("Filter by label").select_option("bug")
     page.get_by_role("button", name="Filter", exact=True).click()
     page.get_by_role("link", name="#148 Issue 148", exact=True).click()
+    page.wait_for_url("**/issues?number=148&label=bug")
     detail = page.get_by_role("region", name="Issue details")
     expect(detail).to_contain_text("Details for 148")
     expect(detail.get_by_role("link", name="Open on GitHub")).to_have_attribute(
@@ -41,6 +42,7 @@ def test_load_filter_extend_and_retain_cached_issues(
     assert github.calls == [1]
     page.get_by_label("Minimum interval").fill("1")
     page.get_by_role("button", name="Save interval").click()
+    page.wait_for_url("**/issues")
     expect(next_page).to_be_disabled()
     app_clock.now += 3600
     page.reload()
