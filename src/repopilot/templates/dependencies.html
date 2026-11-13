@@ -28,7 +28,21 @@
       {% for declaration in selected.declarations %}<p>
         {{ cite(declaration.span, declaration.group ~ ' · ' ~ declaration.span.path ~ ':' ~ declaration.span.start) }}
         <code>{{ declaration.source }}</code>
+        <a href="{{ dependencies_url.include_query_params(package=selected.name, history=loop.index) }}">Look up version history</a>
       </p>{% endfor %}
+      {% if attribution %}
+      {% set declaration = selected.declarations[history - 1] %}
+      <section aria-label="Version history">
+        <h3>Version history</h3>
+        <p>{{ declaration.span.path }} · L{{ declaration.span.start }} · {{ declaration.group }}</p>
+        <p>{{ attribution.description }}</p>
+        {% if attribution.commit %}
+          <a hx-boost="false" href="https://github.com/{{ repository }}/commit/{{ attribution.commit }}">Commit {{ attribution.commit[:8] }}</a> · {{ attribution.date }}
+          <p><a hx-boost="false" href="https://github.com/{{ repository }}/blob/{{ attribution.commit }}/{{ declaration.span.path|urlencode }}#L{{ attribution.line }}">{{ declaration.span.path }} · L{{ attribution.line }}</a></p>
+          <pre><code>{{ attribution.source }}</code></pre>
+        {% endif %}
+      </section>
+      {% endif %}
       {% for use in selected.uses %}<article>
         {{ cite(use.fact.span, use.fact.span.path ~ ' · L' ~ use.fact.span.start) }}
         <p><code>{{ use.fact.scope }}</code> uses <code>{{ use.fact.module }}{% if use.fact.name %} → {{ use.fact.name }}{% endif %}</code>.

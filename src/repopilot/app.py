@@ -17,6 +17,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from repopilot.architecture import GROUP_SIZE, Architecture, PackageTree
 from repopilot.dependencies import DependencyReport
+from repopilot.dependency_history import dependency_history
 from repopilot.explorer import PAGE_LINES, browse
 from repopilot.github import GitHubError, RateLimited
 from repopilot.grounding import StructuredModel, grounded_answer
@@ -313,6 +314,7 @@ def create_app(
         package: str = "",
         preview: bool = False,
         download: bool = False,
+        history: int | None = None,
     ) -> Response:
         repository = f"{owner}/{repo}"
         try:
@@ -328,6 +330,22 @@ def create_app(
         )
         paths = {"owner": owner, "repo": repo, "sha": sha}
         patch = None
+        attribution = None
+        if history is not None:
+            if (
+                not package
+                or not selected
+                or not 1 <= history <= len(selected.declarations)
+            ):
+                raise HTTPException(404, "Declaration not found")
+            attribution = dependency_history(
+                engine.cache.open(repository, sha),
+                architecture.artifacts,
+                engine.client,
+                repository,
+                sha,
+                selected.declarations[history - 1],
+            )
         if preview or download:
             if not package or selected is None:
                 raise HTTPException(404, "Select a dependency to preview its patch")
@@ -350,6 +368,8 @@ def create_app(
             report=report,
             selected=selected,
             patch=patch,
+            history=history,
+            attribution=attribution,
             explorer_url=request.url_for("explorer", **paths),
             dependencies_url=request.url_for("dependencies", **paths),
         )

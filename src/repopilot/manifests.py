@@ -1,7 +1,7 @@
 import posixpath
 import re
 import tomllib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
@@ -85,9 +85,9 @@ def _logical_lines(lines: list[str]) -> Iterator[tuple[int, int, str]]:
 
 
 class _Reader:
-    def __init__(self, snapshot: SourceSnapshot) -> None:
-        self.snapshot = snapshot
-        self.files = {e.path: e.kind for e in snapshot.tree() if e.kind != "directory"}
+    def __init__(self, files: dict[str, str], read_text: Callable[[str], str]) -> None:
+        self.files = files
+        self.read_text = read_text
         self.paths: set[str] = set()
         self.requirements_seen: set[tuple[str, str]] = set()
         self.declarations: list[Declaration] = []
@@ -127,7 +127,7 @@ class _Reader:
                 Diagnostic(path, None, "Manifest is missing or unreadable")
             )
             return None
-        return self.snapshot.read_text(path)
+        return self.read_text(path)
 
     def requirements(
         self, path: str, group: str, ancestors: tuple[str, ...] = ()
@@ -272,8 +272,22 @@ class _Reader:
             read_group(group, group, set(), ())
 
 
+def revision_declarations(path: str, text: str, group: str) -> tuple[Declaration, ...]:
+    reader = _Reader({path: "text"}, lambda _: text)
+    if PurePosixPath(path).name == "pyproject.toml":
+        reader.pyproject(path)
+    else:
+        reader.requirements(path, group)
+    if any(d.path == path for d in reader.diagnostics):
+        raise ValueError("Unsupported manifest declaration in this revision")
+    return tuple(reader.declarations)
+
+
 def parse_manifests(snapshot: SourceSnapshot) -> ManifestReport:
-    reader = _Reader(snapshot)
+    reader = _Reader(
+        {e.path: e.kind for e in snapshot.tree() if e.kind != "directory"},
+        snapshot.read_text,
+    )
     for name in sorted(reader.files):
         path = PurePosixPath(name)
         if path.name == "pyproject.toml":
