@@ -1,0 +1,25 @@
+<section aria-labelledby="first-issues" class="history">
+  <h2 id="first-issues">Recommended first issues</h2>
+  {% if ranking.recommended %}
+  <p>Ordered by historical relevance relative to estimated difficulty.</p>
+  <ol>{% for item in ranking.recommended %}
+    <li>
+      <a href="{{ issue_url.include_query_params(number=item.issue.number, recommendations='true') }}#recommendation-{{ item.issue.number }}">Review #{{ item.issue.number }} · {{ item.issue.title }}</a>
+      <details id="recommendation-{{ item.issue.number }}"{% if selected and selected.number == item.issue.number %} open{% endif %}>
+        <summary>Why this issue</summary>
+        <p>{{ item.assessment.difficulty }} estimated difficulty ({{ item.assessment.score }}/100) · {{ item.confidence }} confidence.</p>
+        <p>The closed issue <a href="{{ item.precedent.issue.url }}" hx-boost="false">#{{ item.precedent.issue.number }} {{ item.precedent.issue.title }}</a> shares {{ item.shared|join(', ') }}.</p>
+        {% for change in item.precedent.changes %}<a href="{{ change.url }}" hx-boost="false">{{ change.kind|capitalize }} · {{ change.title }}</a>{% endfor %}
+        {% if item.overlap %}<p>Previously changed in the same files: {{ item.overlap|join(', ') }}.</p>{% endif %}
+        <p>Components: {{ item.assessment.components|join(', ') }}. {{ item.assessment.factors[-1].reason }}</p>
+        {% for source in item.assessment.evidence %}<a href="{{ source.url }}" hx-boost="false">{{ source.span.path }} · L{{ source.span.start }}–{{ source.span.end }}</a>{% endfor %}
+      </details>
+    </li>
+  {% endfor %}</ol>
+  {% else %}<p>No issue has enough evidence for a recommendation.</p>{% endif %}
+  {% if ranking.uncertain %}
+  <details><summary>Needs maintainer context ({{ ranking.uncertain|length }})</summary>
+    <ul>{% for issue, reason in ranking.uncertain %}<li><a href="{{ issue_url.include_query_params(number=issue.number, recommendations='true') }}">#{{ issue.number }} {{ issue.title }}</a> {{ reason }}</li>{% endfor %}</ul>
+  </details>{% endif %}
+  <a href="{{ issue_url }}/history">Inspect cached precedents</a>
+</section>

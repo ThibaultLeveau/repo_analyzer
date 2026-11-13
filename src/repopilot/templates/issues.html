@@ -22,6 +22,8 @@
 {% if queue.issues %}
 <div class="issue-columns history" id="issue-list">
   <section class="panel guide" aria-label="Open issues">
+    <a href="{{ issue_url.include_query_params(recommendations='true') }}#first-issues">Find a first issue</a>
+    {% if ranking %}{% include "recommendations.html" %}{% endif %}
     <form method="get" action="{{ issue_url }}" hx-boost="false">
       <label for="issue-label">Filter by label</label>
       <select id="issue-label" name="label">

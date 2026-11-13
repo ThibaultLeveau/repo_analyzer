@@ -30,6 +30,7 @@ from repopilot.imports import ImportService, import_service
 from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
 from repopilot.module_graph import arrow
 from repopilot.patches import dependency_fix
+from repopilot.recommendations import recommend
 from repopilot.references import ReferenceIndex
 from repopilot.reports import MEDIA_TYPES, Format, build_report
 from repopilot.resources import ResourceSampler
@@ -301,9 +302,21 @@ def create_app(
         component: str = "",
         sort: str = "",
         revision: int | None = None,
+        recommendations: bool = False,
     ) -> HTMLResponse:
         repository = snapshot_repository(owner, repo, sha)
         queue = issue_pages.read(repository)
+        ranking = None
+        if recommendations:
+            snapshot = engine.cache.open(repository, sha)
+            ranking = recommend(
+                snapshot,
+                architecture.artifacts.python(snapshot),
+                repository,
+                sha,
+                queue.issues,
+                histories.observations(repository, sha),
+            )
         results = scores.current(repository, sha, queue.issues)
         items = [
             i
@@ -360,6 +373,7 @@ def create_app(
             sha=sha,
             status_code=status_code,
             queue=queue,
+            ranking=ranking,
             items=items,
             selected=selected,
             label=label,
@@ -446,6 +460,7 @@ def create_app(
         component: str = "",
         sort: str = "",
         revision: int | None = None,
+        recommendations: bool = False,
     ) -> HTMLResponse:
         return issue_page(
             request,
@@ -457,6 +472,7 @@ def create_app(
             component=component,
             sort=sort,
             revision=revision,
+            recommendations=recommendations,
         )
 
     @app.post(issue_path + "/score", dependencies=[Depends(protect)])
