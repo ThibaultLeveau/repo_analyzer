@@ -3,6 +3,13 @@
   <header class="topbar">
     <a class="brand" href="{{ url_for('overview') }}"><span class="mark" aria-hidden="true">◇</span>RepoPilot</a>
     <span class="repo-context">{% if repository %}{{ repository }} · {{ sha[:8] }}{% elif job %}{{ head.full_name if head else job.repository }}{% if job.sha %} · {{ job.sha[:8] }}{% endif %}{% else %}No repository selected{% endif %}</span>
+    {% if repository and sha %}
+    {% set owner, repo = repository.split('/') %}
+    <form class="header-search" role="search" method="get" action="{{ url_for('search_view', owner=owner, repo=repo, sha=sha) }}" hx-boost="false">
+      <input type="search" name="q" aria-label="Search this snapshot" placeholder="Search this snapshot" maxlength="{{ query_limit }}" value="{{ query|default('') }}">
+      <button type="submit">Search</button>
+    </form>
+    {% endif %}
   </header>
   <nav aria-label="Workspace">
     {% for name, label, icon in [('overview', 'Overview', '▦'), ('setup', 'Local setup', '⌘')] %}
@@ -61,6 +68,8 @@
         <a id="refresh-status" href="{{ url_for('import_status', job_id=job.id) }}">Refresh status</a>
       {% endif %}
     </section>
+    {% elif title == 'Search' %}
+      {% include "search.html" %}
     {% elif title == 'Getting Started' %}
       {% include "guide.html" %}
     {% elif title == 'Code Explorer' %}
