@@ -27,12 +27,25 @@
         <option value="">All labels</option>
         {% for name in labels %}<option value="{{ name }}"{% if name == label %} selected{% endif %}>{{ name }}</option>{% endfor %}
       </select>
+      {% if components %}
+      <label for="issue-component">Filter by component</label>
+      <select id="issue-component" name="component"><option value="">All components</option>
+        {% for name in components %}<option{% if name == component %} selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      {% if scores %}
+        <label for="issue-sort">Sort issues</label>
+        <select id="issue-sort" name="sort"><option value="">Newest first</option><option value="difficulty"{% if sort == 'difficulty' %} selected{% endif %}>Lower estimated difficulty first</option></select>
+      {% endif %}
       <button type="submit">Filter</button>
     </form>
     <ul>{% for item in items %}<li>
-      <a href="{{ issue_url.include_query_params(number=item.number, label=label) }}"{% if selected and selected.id == item.id %} aria-current="true"{% endif %}>#{{ item.number }} {{ item.title }}</a>
+      {% set link = issue_url.include_query_params(number=item.number, label=label) %}
+      {% if sort %}{% set link = link.include_query_params(sort=sort) %}{% endif %}
+      <a href="{{ link.include_query_params(component=component) if component else link }}"{% if selected and selected.id == item.id %} aria-current="true"{% endif %}>#{{ item.number }} {{ item.title }}</a>
+      <small>{{ scores[item.id].difficulty ~ ' difficulty' if item.id in scores else 'Unscored' }}</small>
       <small>{{ item.labels|join(', ') }} · <time datetime="{{ item.created_at }}">{{ item.created_at }}</time></small>
-    </li>{% else %}<li>No issues match this label.</li>{% endfor %}</ul>
+    </li>{% else %}<li>No issues match these filters.</li>{% endfor %}</ul>
   </section>
   <section class="panel guide issue-detail" aria-label="Issue details">
     {% if selected %}
@@ -41,6 +54,15 @@
       <p>Updated <time datetime="{{ selected.updated_at }}">{{ selected.updated_at }}</time></p>
       <p class="issue-body">{{ selected.body or 'No description provided.' }}</p>
       <a href="https://github.com/{{ repository }}/issues/{{ selected.number }}" hx-boost="false">Open on GitHub</a>
+      {% if selected.id in scores %}
+        {% set score = scores[selected.id] %}
+        {% include "assessment.html" %}
+      {% else %}
+        <form method="post" action="{{ score_url }}" hx-boost="false">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="number" value="{{ selected.number }}">
+          <button class="button" type="submit">Assess difficulty</button>
+        </form>
+      {% endif %}
     {% endif %}
   </section>
 </div>

@@ -1,0 +1,15 @@
+<section aria-label="Issue assessment">
+  <h3>Estimated difficulty</h3>
+  <p><strong>{{ score.difficulty }}{% if score.score is not none %} · {{ score.score }}/100{% endif %}</strong> · Confidence: {{ score.confidence }}</p>
+  <small>{{ score.rubric }} · Low below 35, moderate 35–64, high 65 or above.</small>
+  <dl>{% for factor in score.factors %}<dt>{{ factor.name }} · +{{ factor.points }}</dt><dd>{{ factor.reason }}</dd>{% endfor %}</dl>
+  <h3>Affected components</h3>
+  <p>{{ score.components|join(', ') or 'Unknown' }}</p>
+  {% for source in score.evidence %}<p><a hx-boost="false" href="{{ source.url }}">{{ source.span.path }} · L{{ source.span.start }}–{{ source.span.end }}</a></p>{% endfor %}
+  {% if score.reasoning.claims %}
+    <h3>Explanation</h3>
+    {% for claim in score.reasoning.claims %}<p>{{ claim.text }}
+      {% for source in claim.sources %}<a hx-boost="false" href="{{ source.url }}">{{ source.span.path }}:{{ source.span.start }}</a>{% endfor %}
+    </p>{% endfor %}
+  {% endif %}
+</section>
