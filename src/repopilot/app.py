@@ -1,7 +1,9 @@
 import os
 import secrets
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -16,10 +18,11 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from repopilot.architecture import GROUP_SIZE, Architecture, PackageTree
 from repopilot.dependencies import DependencyReport, analyze_dependencies
 from repopilot.explorer import PAGE_LINES, browse
-from repopilot.github import GitHubError
+from repopilot.github import GitHubError, RateLimited
 from repopilot.grounding import StructuredModel
 from repopilot.guide import Guide, Guides
 from repopilot.imports import ImportService, import_service
+from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
 from repopilot.search import QUERY_LIMIT, LexicalSearch
 from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
@@ -35,6 +38,7 @@ def create_app(
     transport: httpx2.BaseTransport | None = None,
     model: StructuredModel | None = None,
     embedder: "Embedder | None" = None,
+    clock: Callable[[], float] = time.time,
 ) -> FastAPI:
     directory = data_dir or Path(
         os.environ.get("REPOPILOT_DATA_DIR", Path.home() / ".repopilot")
@@ -42,14 +46,16 @@ def create_app(
     engine: ImportService
     architecture: Architecture
     guides: Guides
+    issue_pages: IssuePages
     csrf = secrets.token_urlsafe(32)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        nonlocal engine, architecture, guides
+        nonlocal engine, architecture, guides, issue_pages
         with import_service(directory, transport=transport) as engine:
             architecture = Architecture(engine.cache, engine.store, model)
             guides = Guides(architecture)
+            issue_pages = IssuePages(directory, engine.client, clock)
             yield
 
     app = FastAPI(title="RepoPilot", lifespan=lifespan)
@@ -148,6 +154,130 @@ def create_app(
     @app.get("/setup", response_class=HTMLResponse)
     def setup(request: Request) -> HTMLResponse:
         return page(request, "Local setup")
+
+    def issue_repo(owner: str, repo: str, sha: str) -> str:
+        repository = f"{owner}/{repo}"
+        try:
+            engine.cache.open(repository, sha)
+        except (FileNotFoundError, SnapshotError, GitHubError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        return repository
+
+    def issue_page(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        label: str = "",
+        number: int | None = None,
+        error: str = "",
+        status_code: int = 200,
+    ) -> HTMLResponse:
+        repository = issue_repo(owner, repo, sha)
+        queue = issue_pages.read(repository)
+        items = [i for i in queue.issues if not label or label in i.labels]
+        selected = (
+            next((i for i in items if i.number == number), None)
+            if number is not None
+            else next(iter(items), None)
+        )
+        if number is not None and selected is None:
+            raise HTTPException(404, "Issue not found in the current selection")
+        now = clock()
+        paths = {"owner": owner, "repo": repo, "sha": sha}
+        next_time = None
+        if now < queue.next_at:
+            try:
+                next_time = datetime.fromtimestamp(queue.next_at, UTC).strftime(
+                    "%Y-%m-%d %H:%M UTC"
+                )
+            except (OverflowError, OSError, ValueError):
+                next_time = "beyond the supported calendar range"
+        return page(
+            request,
+            "Issues",
+            repository=repository,
+            sha=sha,
+            status_code=status_code,
+            queue=queue,
+            items=items,
+            selected=selected,
+            label=label,
+            error=error,
+            labels=sorted({name for item in queue.issues for name in item.labels}),
+            next_time=next_time,
+            limited=now < queue.retry_at,
+            issue_url=request.url_for("issues_view", **paths),
+            actions_url=request.url_for("update_issues", **paths),
+            interval_url=request.url_for("issue_interval", **paths),
+            explorer_url=request.url_for("explorer", **paths),
+        )
+
+    issue_path = "/repos/{owner}/{repo}/{sha}/issues"
+
+    @app.get(issue_path, response_class=HTMLResponse)
+    def issues_view(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        label: str = "",
+        number: int | None = None,
+    ) -> HTMLResponse:
+        return issue_page(request, owner, repo, sha, label, number)
+
+    @app.post(issue_path + "/load", dependencies=[Depends(protect)])
+    def update_issues(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        action: Annotated[Action, Form()],
+    ) -> Response:
+        repository = issue_repo(owner, repo, sha)
+        try:
+            issue_pages.load(repository, action)
+        except (QueueBusy, Cooldown) as exc:
+            return issue_page(
+                request, owner, repo, sha, error=str(exc), status_code=409
+            )
+        except RateLimited as exc:
+            return issue_page(
+                request, owner, repo, sha, error=str(exc), status_code=429
+            )
+        except GitHubError as exc:
+            return issue_page(
+                request, owner, repo, sha, error=str(exc), status_code=502
+            )
+        return RedirectResponse(
+            request.url_for("issues_view", owner=owner, repo=repo, sha=sha),
+            status_code=303,
+        )
+
+    @app.post(issue_path + "/interval", dependencies=[Depends(protect)])
+    def issue_interval(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        hours: Annotated[str, Form(max_length=32)],
+    ) -> Response:
+        repository = issue_repo(owner, repo, sha)
+        try:
+            issue_pages.set_interval(repository, float(hours))
+        except ValueError:
+            return issue_page(
+                request,
+                owner,
+                repo,
+                sha,
+                error="Enter a positive, finite number of hours.",
+                status_code=422,
+            )
+        return RedirectResponse(
+            request.url_for("issues_view", owner=owner, repo=repo, sha=sha),
+            status_code=303,
+        )
 
     @lru_cache(maxsize=4)
     def dependency_report(repository: str, sha: str) -> DependencyReport:

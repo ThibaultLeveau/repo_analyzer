@@ -59,6 +59,12 @@ button { border: 0; cursor: pointer; font: inherit; }
 .history ul { list-style: none; padding: 0; }
 .history li { display: flex; gap: .8rem; flex-wrap: wrap; padding: .5rem 0; border-bottom: 1px solid var(--line); }
 .history small { color: var(--muted); }
+.button:disabled { cursor: default; opacity: .5; }
+.issue-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.issue-columns li { display: grid; }
+.issue-detail { align-self: start; min-width: 0; }
+.issue-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 56rem) { .issue-columns { grid-template-columns: minmax(0, 1fr); } }
 .repo-context, .guide h2, .history a { overflow-wrap: anywhere; }
 [role="alert"] { color: #ffb8a8; }
 .explorer { display: grid; grid-template-columns: minmax(11rem, 28%) minmax(0, 1fr); gap: 1rem; }

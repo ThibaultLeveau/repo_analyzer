@@ -1,6 +1,6 @@
 import socket
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from threading import Thread
 
@@ -23,11 +23,17 @@ def chat_model() -> StructuredModel | None:
 
 
 @pytest.fixture
+def app_clock() -> Callable[[], float]:
+    return time.time
+
+
+@pytest.fixture
 def app_url(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     import_transport: httpx2.BaseTransport | None,
     chat_model: StructuredModel | None,
+    app_clock: Callable[[], float],
 ) -> Iterator[str]:
     monkeypatch.setenv("REPOPILOT_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -36,7 +42,9 @@ def app_url(
         port = listener.getsockname()[1]
         server = uvicorn.Server(
             uvicorn.Config(
-                create_app(transport=import_transport, model=chat_model),
+                create_app(
+                    transport=import_transport, model=chat_model, clock=app_clock
+                ),
                 log_level="error",
             )
         )
