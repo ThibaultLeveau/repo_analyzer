@@ -48,6 +48,9 @@ a:focus-visible, main:focus-visible { outline: 2px solid var(--accent); outline-
 .header-search input { min-width: 0; width: 15rem; }
 .header-search button { color: var(--accent); }
 .search-results { list-style: none; padding: 0; margin: 0; }
+.flow-diagram { max-height: 32rem; overflow: auto; margin-block: 1rem; color: var(--muted); }
+.flow-diagram text { fill: var(--text); font: .82rem ui-monospace, monospace; }
+.flow-diagram a text { fill: var(--accent); text-decoration: underline; }
 .search-results li { padding-block: .6rem; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .search-results small, .search-results span { color: var(--muted); font-size: .85rem; }
 .search-results small { margin-right: .45rem; }

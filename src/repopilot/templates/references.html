@@ -1,5 +1,8 @@
 <section class="panel ask-pane" aria-label="Symbol references">
   <h2>{{ detail.symbol.name }}</h2>
+  {% if detail.symbol.kind in ['function', 'method'] and path.endswith('.py') %}
+  <a href="{{ url_for('architecture_view', owner=repository.split('/')[0], repo=repository.split('/')[1], sha=sha).include_query_params(path=path, entry=detail.symbol.name) }}">Trace outgoing calls</a>
+  {% endif %}
   <p>This {{ detail.symbol.kind }} is defined at {{ path }} · L{{ detail.symbol.span.start }}–{{ detail.symbol.span.end }}.
     The index found {{ detail.incoming|length }} incoming, {{ detail.outgoing|length }} outgoing and {{ detail.tests|length }} test references.</p>
   {% for heading, refs in [('Incoming calls and imports', detail.incoming), ('Outgoing calls and imports', detail.outgoing), ('Test references', detail.tests)] %}
