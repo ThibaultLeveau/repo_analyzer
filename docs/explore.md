@@ -24,6 +24,25 @@ Open **Dependencies** to trace a declared package to the modules that import
 it. The Catalog example declares `PyYAML==6.0.3` and imports `yaml` in
 `src/catalog.py`.
 
+Select a package, then **Official documentation** and **Index documentation**.
+Open a section to inspect its excerpt and publisher link. The view shows the
+manifest constraint, documentation edition and fetch time. Unversioned and
+latest editions can differ from the installed package. Cached pages become
+stale after seven days. Select **Refresh documentation** to fetch them again.
+
+To configure a publisher, add a distribution entry to `official-docs.toml`
+inside the local RepoPilot data directory. For example:
+
+```toml
+[sources.requests]
+url = "https://requests.readthedocs.io/en/latest/user/quickstart/"
+edition = "Latest"
+```
+
+Only the configured page and its same-origin redirects are eligible. A
+`{series}` placeholder selects the major and minor version from a single
+exact pin or minor-series wildcard, falling back to `stable`.
+
 **Getting Started** separates documented setup steps from commands inferred
 from project files. Follow the evidence link before using a command. A command
 marked unverified has not been executed by RepoPilot. **Download Markdown**
