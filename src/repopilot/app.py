@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import httpx2
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +25,7 @@ from repopilot.explorer import PAGE_LINES, browse
 from repopilot.github import GitHubError, RateLimited
 from repopilot.grounding import StructuredModel, grounded_answer
 from repopilot.guide import Guide, Guides
+from repopilot.history import History
 from repopilot.imports import ImportService, import_service
 from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
 from repopilot.module_graph import arrow
@@ -57,19 +58,21 @@ def create_app(
     architecture: Architecture
     guides: Guides
     issue_pages: IssuePages
+    histories: History
     scores: Scores
     sampler: ResourceSampler
     csrf = secrets.token_urlsafe(32)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        nonlocal engine, architecture, guides, issue_pages, scores, sampler
+        nonlocal engine, architecture, guides, issue_pages, scores, sampler, histories
         with import_service(
             directory, transport=transport, model=model, embedder=embedder, clock=clock
         ) as engine:
             architecture = engine.architecture
             guides = Guides(architecture)
             issue_pages = IssuePages(directory, engine.client, clock)
+            histories = History(directory, engine.client, clock)
             scores = Scores(directory)
             sampler = ResourceSampler(directory, clock)
             stop = threading.Event()
@@ -381,6 +384,56 @@ def create_app(
         )
 
     issue_path = "/repos/{owner}/{repo}/{sha}/issues"
+
+    @app.get(issue_path + "/history", response_class=HTMLResponse)
+    def history_view(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        number: Annotated[int | None, Query(gt=0, le=2147483647)] = None,
+    ) -> HTMLResponse:
+        repository = snapshot_repository(owner, repo, sha)
+        return page(
+            request,
+            "Repository history",
+            repository=repository,
+            sha=sha,
+            number=number,
+            observation=histories.read(repository, sha, number),
+            explorer_url=request.url_for("explorer", owner=owner, repo=repo, sha=sha),
+        )
+
+    @app.post(issue_path + "/history", dependencies=[Depends(protect)])
+    def load_history(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        number: Annotated[int | None, Form(gt=0, le=2147483647)] = None,
+        refresh: Annotated[bool, Form()] = False,
+    ) -> Response:
+        repository = snapshot_repository(owner, repo, sha)
+        url = request.url_for("history_view", owner=owner, repo=repo, sha=sha)
+        try:
+            histories.load(repository, sha, number, refresh=refresh)
+        except GitHubError as exc:
+            return page(
+                request,
+                "Repository history",
+                repository=repository,
+                sha=sha,
+                number=number,
+                observation=histories.read(repository, sha, number),
+                error=str(exc),
+                status_code=429 if isinstance(exc, RateLimited) else 502,
+                explorer_url=request.url_for(
+                    "explorer", owner=owner, repo=repo, sha=sha
+                ),
+            )
+        return RedirectResponse(
+            url.include_query_params(number=number) if number else url, status_code=303
+        )
 
     @app.get(issue_path, response_class=HTMLResponse)
     def issues_view(
