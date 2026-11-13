@@ -1,4 +1,32 @@
+from pathlib import Path
+
 from playwright.sync_api import Page, expect
+
+
+def test_copy_download_and_follow_setup_evidence(
+    page: Page, app_url: str, explorer_url: str, tmp_path: Path
+) -> None:
+    page.context.grant_permissions(
+        ["clipboard-read", "clipboard-write"], origin=app_url
+    )
+    page.goto(app_url + explorer_url)
+    page.get_by_role("link", name="Getting Started").click()
+    install = page.get_by_role("region", name="Installation")
+    command = "python -m pip install -r requirements.txt"
+    expect(install.locator("code")).to_have_text(command)
+    expect(install).to_contain_text("Unverified")
+    install.get_by_role("button", name="Copy command").click()
+    expect(install.get_by_role("button", name="Copied")).to_be_visible()
+    assert page.evaluate("navigator.clipboard.readText()") == command
+    with page.expect_download() as event:
+        page.get_by_role("link", name="Download Markdown").click()
+    file = tmp_path / event.value.suggested_filename
+    event.value.save_as(file)
+    markdown = file.read_text(encoding="utf-8")
+    assert command in markdown and "Unverified" in markdown
+    install.get_by_role("link", name="requirements.txt · L1").click()
+    expect(page.locator("#L1:target")).to_contain_text("PyYAML>=6")
+    assert explorer_url in page.url
 
 
 def test_select_dependency_and_open_import(
