@@ -11,6 +11,7 @@
 {% if notice == 'ok' %}<p role="status">Module descriptions updated.</p>
 {% elif notice == 'missing_key' %}<p role="status">Set OPENAI_API_KEY to generate descriptions. Static descriptions are available below.</p>
 {% elif notice in ['provider_error', 'timeout', 'invalid_response', 'insufficient_evidence'] %}<p role="status">No new descriptions were available. Existing descriptions are shown below.</p>{% endif %}
+{% if flow %}{% include "call_flow.html" %}{% endif %}
 {% if selected %}
 <div class="architecture">
   <aside class="panel file-tree" aria-label="Package tree">

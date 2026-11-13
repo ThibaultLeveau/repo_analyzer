@@ -39,6 +39,12 @@ lines 4–5. Line 5 calls `yaml.safe_load(source)`. Its test appears in
 ## Check architecture, dependencies and setup
 
 The **Architecture** view groups modules and links relationships to imports.
+To trace a Python function or method, select its definition in **Code Explorer**
+and choose **Trace outgoing calls**. The diagram and ordered call-site list
+both link to the invoking line in the selected commit. RepoPilot follows
+up to four call levels and displays up to 48 sites. It marks recursion,
+unresolved calls and traversal limits explicitly.
+
 Open **Dependencies** to trace a declared package to the modules that import
 it. The Catalog example declares `PyYAML==6.0.3` and imports `yaml` in
 `src/catalog.py`.

@@ -19,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from repopilot.architecture import GROUP_SIZE, Architecture, PackageTree
+from repopilot.call_flow import trace
 from repopilot.dependencies import DependencyReport
 from repopilot.dependency_history import dependency_history
 from repopilot.doc_fetch import DocsUnavailable
@@ -810,6 +811,7 @@ def create_app(
         path: str = "",
         notice: str = "",
         graph_page: int = 1,
+        entry: str = "",
     ) -> HTMLResponse:
         repository = f"{owner}/{repo}"
         try:
@@ -821,6 +823,12 @@ def create_app(
             raise HTTPException(404, "Module not found")
         if not selected and roles:
             selected = roles[0]
+        flow = None
+        if entry:
+            try:
+                flow = trace(reference_index(repository, sha), path, entry)
+            except KeyError as exc:
+                raise HTTPException(404, "Call entry point not found in this module") from exc
         start = roles.index(selected) // GROUP_SIZE * GROUP_SIZE if selected else 0
         paths = {"owner": owner, "repo": repo, "sha": sha}
         return page(
@@ -828,6 +836,7 @@ def create_app(
             "Architecture",
             repository=repository,
             sha=sha,
+            flow=flow,
             explorer_url=request.url_for("explorer", **paths),
             architecture_url=request.url_for("architecture_view", **paths),
             generate_url=request.url_for("generate_roles", **paths),
