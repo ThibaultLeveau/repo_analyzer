@@ -75,6 +75,7 @@ class Hit:
     path: str
     start: int | None = None
     end: int | None = None
+    channel: str = "Lexical"
 
 
 def _snippet(line: str, match: int = 0) -> str:

@@ -53,14 +53,23 @@ def test_import_to_cited_answer_and_issue_queue(
     expect(page.get_by_role("status")).to_have_text(
         "Semantic index ready with 4 source chunks."
     )
-    page.get_by_role("link", name="Code Explorer", exact=True).click()
-    panel = page.get_by_role("region", name="Ask about this code")
-    panel.get_by_label("Question about this commit").fill(
-        "How does load_catalog parse the configuration?"
+    question = "How does load_catalog parse the configuration?"
+    search = page.get_by_role("searchbox")
+    search.fill(question)
+    search.press("Enter")
+    first = (
+        page.get_by_role("region", name="Search results").get_by_role("listitem").first
     )
+    expect(first).to_contain_text("Lexical + Semantic")
+    first.get_by_role("link").click()
+    expect(page.locator("#L5.selected")).to_contain_text("yaml.safe_load")
+    source_url = page.url
+    panel = page.get_by_role("region", name="Ask about this code")
+    panel.get_by_label("Question about this commit").fill(question)
     panel.get_by_role("button", name="Ask").click()
     expect(panel).to_contain_text("It parses the configuration with yaml.safe_load.")
     panel.get_by_role("link", name="Open cited lines").click()
+    expect(page).to_have_url(source_url)
     expect(page.locator("#L5.selected")).to_contain_text("yaml.safe_load")
     assert f"/{catalog.sha}/code?path=src%2Fcatalog.py&line=1&end=5" in page.url
     page.get_by_role("link", name="Issues", exact=True).click()

@@ -7,7 +7,7 @@
     {% for hit in hits %}
     {% set file_url = explorer_url.include_query_params(path=hit.path) %}
     <li>
-      <small>{{ hit.kind }}</small>
+      <small>{{ hit.kind }} · {{ hit.channel }}</small>
       <a hx-boost="false" href="{% if hit.start %}{{ file_url.include_query_params(line=hit.start, end=hit.end) }}#L{{ hit.start }}{% else %}{{ file_url }}{% endif %}">{{ hit.label }}</a>
       {% if hit.start %}<span>{{ hit.path }} · L{{ hit.start }}{% if hit.start != hit.end %}–{{ hit.end }}{% endif %}</span>{% endif %}
       {% if hit.snippet %}<pre><code>{{ hit.snippet }}</code></pre>{% endif %}
