@@ -1,7 +1,7 @@
 import ast
 import sys
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from importlib.util import resolve_name
 from pathlib import PurePosixPath
@@ -60,6 +60,12 @@ class PythonFacts:
     modules: tuple[Module, ...]
     packages: tuple[str, ...]
     diagnostics: tuple[Diagnostic, ...]
+
+
+@dataclass(frozen=True)
+class Parser:
+    parse: Callable[[str, str], Module]
+    packages: tuple[str, ...] = ()
 
 
 def _module_name(path: str) -> tuple[str, bool]:
@@ -216,61 +222,49 @@ class _Visitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def analyze_python(snapshot: SourceSnapshot) -> PythonFacts:
-    entries = [
-        entry
-        for entry in snapshot.tree()
-        if entry.path.endswith(".py") and entry.kind != "directory"
-    ]
-    names = {entry.path: _module_name(entry.path) for entry in entries}
-    known = Counter(name for name, _ in names.values())
-    packages = set()
-    for name, is_package in names.values():
-        parts = name.split(".")
-        for i in range(1, len(parts) + int(is_package)):
-            packages.add(".".join(parts[:i]))
-    for package in packages:
-        known.setdefault(package, 1)
+class PythonAnalyzer:
+    suffixes = (".py",)
 
-    modules: list[Module] = []
-    diagnostics: list[Diagnostic] = []
-    for entry in entries:
-        if entry.kind != "text":
-            diagnostics.append(
-                Diagnostic(entry.path, None, f"Cannot parse {entry.kind} entry")
+    def prepare(self, snapshot: SourceSnapshot, paths: tuple[str, ...]) -> Parser:
+        names = {path: _module_name(path) for path in paths}
+        known = Counter(name for name, _ in names.values())
+        packages: set[str] = set()
+        for name, is_package in names.values():
+            parts = name.split(".")
+            for i in range(1, len(parts) + int(is_package)):
+                packages.add(".".join(parts[:i]))
+        for package in packages:
+            known.setdefault(package, 1)
+
+        def parse(path: str, text: str) -> Module:
+            name, is_package = names[path]
+            visitor = _Visitor(
+                path, name, name if is_package else name.rpartition(".")[0], known
             )
-            continue
-        text = snapshot.read_text(entry.path)
-        name, is_package = names[entry.path]
-        visitor = _Visitor(
-            entry.path, name, name if is_package else name.rpartition(".")[0], known
-        )
-        try:
-            tree = ast.parse(text, filename=entry.path)
+            tree = ast.parse(text, filename=path)
             visitor.visit(tree)
-        except SyntaxError as exc:
-            diagnostics.append(Diagnostic(entry.path, exc.lineno, exc.msg))
-            continue
-        except (ValueError, RecursionError) as exc:
-            diagnostics.append(Diagnostic(entry.path, None, str(exc)))
-            continue
-        physical = text.replace("\r\n", "\n").replace("\r", "\n")
-        last_line = physical.count("\n") + int(not physical.endswith("\n"))
-        modules.append(
-            Module(
+            physical = text.replace("\r\n", "\n").replace("\r", "\n")
+            last_line = physical.count("\n") + int(not physical.endswith("\n"))
+            return Module(
                 name,
                 is_package,
-                Span(entry.path, 1, max(1, last_line)),
+                Span(path, 1, max(1, last_line)),
                 ast.get_docstring(tree),
                 tuple(visitor.symbols),
                 tuple(visitor.imports),
                 Span(
-                    entry.path,
+                    path,
                     tree.body[0].lineno,
                     tree.body[0].end_lineno or tree.body[0].lineno,
                 )
                 if ast.get_docstring(tree)
                 else None,
             )
-        )
-    return PythonFacts(tuple(modules), tuple(sorted(packages)), tuple(diagnostics))
+
+        return Parser(parse, tuple(sorted(packages)))
+
+
+def analyze_python(snapshot: SourceSnapshot) -> PythonFacts:
+    from repopilot.languages import analyze
+
+    return analyze(snapshot, (PythonAnalyzer(),))

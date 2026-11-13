@@ -7,7 +7,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal
 
-from repopilot.python_facts import Span, Symbol, analyze_python
+from repopilot.languages import analyze_snapshot
+from repopilot.python_facts import Span, Symbol
 from repopilot.snapshots import SourceSnapshot
 
 CHUNK_CHARS = 1600
@@ -89,7 +90,7 @@ class LexicalSearch:
         self.snapshot = snapshot
         self.paths = [e.path for e in snapshot.tree() if e.kind != "directory"]
         self.symbols: dict[str, list[Symbol]] = defaultdict(list)
-        for module in analyze_python(snapshot).modules:
+        for module in analyze_snapshot(snapshot).modules:
             self.symbols[module.span.path].extend(module.symbols)
 
     def search(self, query: str, *, limit: int = RESULT_LIMIT) -> list[Hit]:

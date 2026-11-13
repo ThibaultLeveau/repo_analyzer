@@ -29,6 +29,7 @@ from repopilot.guide import Guide, Guides
 from repopilot.history import History
 from repopilot.imports import ImportService, import_service
 from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
+from repopilot.languages import supported
 from repopilot.module_graph import arrow
 from repopilot.official_docs import OfficialDocs, source_for
 from repopilot.patches import dependency_fix
@@ -990,7 +991,7 @@ def create_app(
                 status_code=422,
             )
         module = None
-        if view.selected and view.selected.kind == "text" and path.endswith(".py"):
+        if view.selected and view.selected.kind == "text" and supported(path):
             facts = architecture.artifacts.python(snapshot)
             module = next((m for m in facts.modules if m.span.path == path), None)
         symbols = (
