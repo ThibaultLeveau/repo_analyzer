@@ -20,6 +20,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from repopilot.architecture import GROUP_SIZE, Architecture, PackageTree
 from repopilot.dependencies import DependencyReport
 from repopilot.dependency_history import dependency_history
+from repopilot.doc_fetch import DocsUnavailable
 from repopilot.events import measure
 from repopilot.explorer import PAGE_LINES, browse
 from repopilot.github import GitHubError, RateLimited
@@ -29,6 +30,7 @@ from repopilot.history import History
 from repopilot.imports import ImportService, import_service
 from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
 from repopilot.module_graph import arrow
+from repopilot.official_docs import OfficialDocs, source_for
 from repopilot.patches import dependency_fix
 from repopilot.recommendations import recommend
 from repopilot.references import ReferenceIndex
@@ -60,6 +62,7 @@ def create_app(
     guides: Guides
     issue_pages: IssuePages
     histories: History
+    official_docs: OfficialDocs
     scores: Scores
     sampler: ResourceSampler
     csrf = secrets.token_urlsafe(32)
@@ -67,6 +70,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nonlocal engine, architecture, guides, issue_pages, scores, sampler, histories
+        nonlocal official_docs
         with import_service(
             directory, transport=transport, model=model, embedder=embedder, clock=clock
         ) as engine:
@@ -74,6 +78,7 @@ def create_app(
             guides = Guides(architecture)
             issue_pages = IssuePages(directory, engine.client, clock)
             histories = History(directory, engine.client, clock)
+            official_docs = OfficialDocs(directory, clock)
             scores = Scores(directory)
             sampler = ResourceSampler(directory, clock)
             stop = threading.Event()
@@ -569,6 +574,21 @@ def create_app(
     def dependency_report(repository: str, sha: str) -> DependencyReport:
         return architecture.artifacts.dependencies(engine.cache.open(repository, sha))
 
+    @app.post("/repos/{owner}/{repo}/{sha}/dependencies/docs", dependencies=[Depends(protect)])
+    def index_documentation(
+        request: Request, owner: str, repo: str, sha: str, package: Annotated[str, Form()]
+    ) -> Response:
+        name = snapshot_repository(owner, repo, sha)
+        selected = dependency_report(name, sha).packages.get(package)
+        if selected is None or not source_for(selected, official_docs.catalog):
+            raise HTTPException(404, "Documentation source not found")
+        try:
+            official_docs.index(name, sha, selected)
+        except DocsUnavailable as exc:
+            raise HTTPException(409, str(exc)) from exc
+        url = request.url_for("dependencies", owner=owner, repo=repo, sha=sha)
+        return RedirectResponse(url.include_query_params(package=package, docs="true"), status_code=303)
+
     @app.get("/repos/{owner}/{repo}/{sha}/dependencies", response_class=HTMLResponse)
     def dependencies(
         request: Request,
@@ -579,6 +599,7 @@ def create_app(
         preview: bool = False,
         download: bool = False,
         history: int | None = None,
+        docs: bool = False,
     ) -> Response:
         repository = f"{owner}/{repo}"
         try:
@@ -593,6 +614,7 @@ def create_app(
             else next(iter(report.packages.values()), None)
         )
         paths = {"owner": owner, "repo": repo, "sha": sha}
+        source = source_for(selected, official_docs.catalog) if selected else None
         patch = None
         attribution = None
         if history is not None:
@@ -631,6 +653,11 @@ def create_app(
             sha=sha,
             report=report,
             selected=selected,
+            doc_source=source,
+            show_docs=docs,
+            doc_page=official_docs.read(repository, sha, selected.name, source)
+            if docs and selected and source else None,
+            docs_url=request.url_for("index_documentation", **paths),
             patch=patch,
             history=history,
             attribution=attribution,

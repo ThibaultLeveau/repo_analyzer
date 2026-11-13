@@ -25,6 +25,33 @@
   <section class="panel role-evidence" aria-label="Import evidence">
     <h2>Import evidence</h2>
     {% if selected %}<h3>{{ selected.name }}</h3>
+      {% if doc_source %}
+      <a href="{{ dependencies_url.include_query_params(package=selected.name, docs='true') }}">Official documentation</a>
+      {% if show_docs %}
+      <section aria-label="Official documentation">
+        <h3>Official documentation</h3>
+        <p><a hx-boost="false" href="{{ doc_source.url }}">{{ doc_source.url }}</a> · {{ doc_source.edition }}</p>
+        {% if doc_page and doc_page.error %}<p role="status">Unavailable · {{ doc_page.error }}</p>{% endif %}
+        {% if doc_page and doc_page.fetched is not none %}
+        <p>{{ 'Stale' if doc_page.stale else 'Indexed' }} · {{ doc_page.fetched|utc }} UTC · Declared {{ doc_page.version }}</p>
+        {% endif %}
+        {% if not doc_page or doc_page.stale or doc_page.fetched is none %}
+        <form action="{{ docs_url }}" method="post" hx-boost="false">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="package" value="{{ selected.name }}">
+          <button type="submit">{{ 'Refresh documentation' if doc_page and doc_page.chunks else 'Index documentation' }}</button>
+        </form>
+        {% endif %}
+        {% if doc_page and doc_page.chunks %}
+        <details open><summary>{{ doc_page.chunks[0].title }} · {{ doc_page.chunks|length }} excerpts</summary>
+          {% for section, parts in doc_page.chunks|groupby('section', case_sensitive=true) %}
+          <details><summary>{{ section }}</summary>
+            <a hx-boost="false" href="{{ parts[0].url }}">Open {{ section }}</a>
+            {% for part in parts %}<p>{{ part.text }}</p>{% endfor %}
+          </details>{% endfor %}
+        </details>{% endif %}
+      </section>{% endif %}
+      {% else %}<p>No official documentation source configured for this package.</p>{% endif %}
       {% for declaration in selected.declarations %}<p>
         {{ cite(declaration.span, declaration.group ~ ' · ' ~ declaration.span.path ~ ':' ~ declaration.span.start) }}
         <code>{{ declaration.source }}</code>
