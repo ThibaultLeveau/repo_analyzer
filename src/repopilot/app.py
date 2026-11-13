@@ -1050,7 +1050,7 @@ def create_app(
         from repopilot.ask import Ask
         from repopilot.rerank import Reranker
 
-        return Ask(engine.cache, engine.store, vector_index(), model, histories, official_docs, Reranker.configured())
+        return Ask(engine.cache, engine.store, vector_index(), model, histories, official_docs, Reranker.configured(), notes)
 
     @app.post("/repos/{owner}/{repo}/{sha}/ask", dependencies=[Depends(protect)])
     def ask_question(
