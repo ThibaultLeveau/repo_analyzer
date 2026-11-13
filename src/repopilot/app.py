@@ -24,6 +24,7 @@ from repopilot.guide import Guide, Guides
 from repopilot.imports import ImportService, import_service
 from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
 from repopilot.module_graph import arrow
+from repopilot.patches import dependency_fix
 from repopilot.references import ReferenceIndex
 from repopilot.search import QUERY_LIMIT, LexicalSearch
 from repopilot.snapshots import SnapshotError
@@ -305,8 +306,14 @@ def create_app(
 
     @app.get("/repos/{owner}/{repo}/{sha}/dependencies", response_class=HTMLResponse)
     def dependencies(
-        request: Request, owner: str, repo: str, sha: str, package: str = ""
-    ) -> HTMLResponse:
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        package: str = "",
+        preview: bool = False,
+        download: bool = False,
+    ) -> Response:
         repository = f"{owner}/{repo}"
         try:
             report = dependency_report(repository, sha)
@@ -320,6 +327,21 @@ def create_app(
             else next(iter(report.packages.values()), None)
         )
         paths = {"owner": owner, "repo": repo, "sha": sha}
+        patch = None
+        if preview or download:
+            if not package or selected is None:
+                raise HTTPException(404, "Select a dependency to preview its patch")
+            patch = dependency_fix(engine.cache.open(repository, sha), report, selected)
+            if download:
+                if not patch.diff:
+                    raise HTTPException(409, patch.reason)
+                return Response(
+                    patch.diff.encode(),
+                    media_type="text/x-diff",
+                    headers={
+                        "Content-Disposition": 'attachment; filename="dependency.patch"'
+                    },
+                )
         return page(
             request,
             "Dependencies",
@@ -327,6 +349,7 @@ def create_app(
             sha=sha,
             report=report,
             selected=selected,
+            patch=patch,
             explorer_url=request.url_for("explorer", **paths),
             dependencies_url=request.url_for("dependencies", **paths),
         )
