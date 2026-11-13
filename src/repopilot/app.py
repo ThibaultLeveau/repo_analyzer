@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import httpx2
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -24,12 +24,16 @@ from repopilot.search import QUERY_LIMIT, LexicalSearch
 from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
 
+if TYPE_CHECKING:
+    from repopilot.vectors import Embedder, VectorIndex
+
 
 def create_app(
     *,
     data_dir: Path | None = None,
     transport: httpx2.BaseTransport | None = None,
     model: StructuredModel | None = None,
+    embedder: "Embedder | None" = None,
 ) -> FastAPI:
     directory = data_dir or Path(
         os.environ.get("REPOPILOT_DATA_DIR", Path.home() / ".repopilot")
@@ -282,9 +286,33 @@ def create_app(
     def lexical_index(repository: str, sha: str) -> LexicalSearch:
         return LexicalSearch(engine.cache.open(repository, sha))
 
+    @lru_cache(maxsize=1)
+    def vector_index() -> "VectorIndex":
+        from repopilot.vectors import VectorIndex
+
+        return VectorIndex(directory, engine.cache, embedder)
+
+    @app.post(
+        "/repos/{owner}/{repo}/{sha}/search/index", dependencies=[Depends(protect)]
+    )
+    def build_index(request: Request, owner: str, repo: str, sha: str) -> Response:
+        from repopilot.vectors import VectorError
+
+        try:
+            count = vector_index().build(f"{owner}/{repo}", sha)
+            notice = f"Semantic index ready with {count} source chunks."
+        except (FileNotFoundError, GitHubError, SnapshotError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        except VectorError as exc:
+            notice = str(exc)
+        url = request.url_for("search_view", owner=owner, repo=repo, sha=sha)
+        return RedirectResponse(
+            str(url.include_query_params(notice=notice)), status_code=303
+        )
+
     @app.get("/repos/{owner}/{repo}/{sha}/search", response_class=HTMLResponse)
     def search_view(
-        request: Request, owner: str, repo: str, sha: str, q: str = ""
+        request: Request, owner: str, repo: str, sha: str, q: str = "", notice: str = ""
     ) -> HTMLResponse:
         repository = f"{owner}/{repo}"
         paths = {"owner": owner, "repo": repo, "sha": sha}
@@ -306,6 +334,8 @@ def create_app(
             sha=sha,
             explorer_url=request.url_for("explorer", **paths),
             query=q[:QUERY_LIMIT],
+            index_url=request.url_for("build_index", **paths),
+            index_notice=notice,
             hits=hits,
             error=error,
         )

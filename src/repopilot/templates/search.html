@@ -16,3 +16,9 @@
   </ol>
   {% endif %}
 </section>
+<form class="history" action="{{ index_url }}" method="post" hx-boost="false">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <button type="submit" class="button">Build semantic index</button>
+  <p>Embed this commit’s source with OpenAI and store the index locally.</p>
+  {% if index_notice %}<p role="status">{{ index_notice }}</p>{% endif %}
+</form>

@@ -3,6 +3,19 @@ from pathlib import Path
 from playwright.sync_api import Page, expect
 
 
+def test_semantic_index_missing_key_keeps_search_available(
+    page: Page, app_url: str, explorer_url: str
+) -> None:
+    page.goto(app_url + explorer_url)
+    search = page.get_by_role("searchbox")
+    search.press("Enter")
+    page.get_by_role("button", name="Build semantic index").click()
+    expect(page.get_by_role("status")).to_contain_text("Set OPENAI_API_KEY")
+    search.fill("msg")
+    search.press("Enter")
+    expect(page.get_by_role("link", name="demo.msg")).to_be_visible()
+
+
 def test_search_by_keyboard_and_follow_symbol(
     page: Page, app_url: str, explorer_url: str
 ) -> None:
