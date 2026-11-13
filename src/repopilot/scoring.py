@@ -3,10 +3,13 @@ import json
 import re
 import sqlite3
 from collections import defaultdict
+from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
+from filelock import FileLock
 from pydantic import TypeAdapter
 
 from repopilot.grounding import Answer, Evidence, StructuredModel, grounded_answer
@@ -164,12 +167,39 @@ def assess(
 _RESULT = TypeAdapter(Assessment)
 
 
+@dataclass(frozen=True)
+class Revision:
+    id: int
+    sha: str
+    issue_revision: str
+    score: Assessment
+    evaluated_at: str | None
+    title: str | None
+
+    def changes(
+        self, previous: "Revision"
+    ) -> list[tuple[str, Factor | None, Factor | None]]:
+        before = {f.name: f for f in previous.score.factors}
+        after = {f.name: f for f in self.score.factors}
+        return [
+            (name, before.get(name), after.get(name))
+            for name in dict.fromkeys([*before, *after])
+            if before.get(name) != after.get(name)
+        ]
+
+
 class Scores:
     def __init__(self, directory: Path) -> None:
         self.path = directory / "scores.db"
         with closing(sqlite3.connect(self.path)) as db, db:
             db.execute(
                 "CREATE TABLE IF NOT EXISTS scores (repo TEXT, sha TEXT, issue INTEGER, revision TEXT, rubric TEXT, result BLOB NOT NULL, PRIMARY KEY(repo,sha,issue,revision,rubric))"
+            )
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS score_details (score_id INTEGER PRIMARY KEY, evaluated_at TEXT NOT NULL, title TEXT NOT NULL)"
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS scores_by_issue ON scores(repo, issue)"
             )
 
     def current(
@@ -189,7 +219,7 @@ class Scores:
 
     def save(self, repo: str, sha: str, issue: Issue, score: Assessment) -> None:
         with closing(sqlite3.connect(self.path)) as db, db:
-            db.execute(
+            cursor = db.execute(
                 "INSERT OR IGNORE INTO scores VALUES (?,?,?,?,?,?)",
                 (
                     repo.lower(),
@@ -200,3 +230,47 @@ class Scores:
                     _RESULT.dump_json(score),
                 ),
             )
+            if cursor.rowcount:
+                db.execute(
+                    "INSERT INTO score_details VALUES (?,?,?)",
+                    (
+                        cursor.lastrowid,
+                        datetime.now(UTC).isoformat(timespec="seconds"),
+                        issue.title,
+                    ),
+                )
+
+    def evaluate(
+        self,
+        repo: str,
+        sha: str,
+        issue: Issue,
+        compute: Callable[[], Assessment],
+        rubric: str = RUBRIC,
+    ) -> None:
+        key = (repo.lower(), sha, issue.id, issue_revision(issue), rubric)
+        lock = hashlib.sha256(json.dumps(key).encode()).hexdigest()[:24]
+        with FileLock(self.path.with_name(f"score-{lock}.lock")):
+            with closing(sqlite3.connect(self.path)) as db:
+                if db.execute(
+                    "SELECT 1 FROM scores WHERE repo=? AND sha=? AND issue=? AND revision=? AND rubric=?",
+                    key,
+                ).fetchone():
+                    return
+            result = compute()
+            if result.rubric != rubric:
+                raise ValueError("Scoring rubric changed during evaluation")
+            self.save(repo, sha, issue, result)
+
+    def history(self, repo: str, issue_id: int) -> list[Revision]:
+        with closing(sqlite3.connect(self.path)) as db:
+            rows = db.execute(
+                "SELECT s.rowid,s.sha,s.revision,s.result,d.evaluated_at,d.title "
+                "FROM scores s LEFT JOIN score_details d ON d.score_id=s.rowid "
+                "WHERE s.repo=? AND s.issue=? ORDER BY s.rowid DESC",
+                (repo.lower(), issue_id),
+            )
+            return [
+                Revision(i, sha, revision, _RESULT.validate_json(data), time, title)
+                for i, sha, revision, data, time, title in rows
+            ]
