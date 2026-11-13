@@ -204,6 +204,9 @@ def build_report(
                     + tuple(
                         Citation(f"Official documentation · {s.package} · {s.edition} · {s.section}", None, None, s.url)
                         for s in claim.documentation
+                    ) + tuple(
+                        Citation(f"User note · {s.filename} · {s.section} · revision {s.revision}", None, None, s.url)
+                        for s in claim.notes
                     ),
                     timestamp,
                 )

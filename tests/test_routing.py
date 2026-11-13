@@ -10,7 +10,13 @@ from test_official_docs import Publisher
 
 from repopilot.ask import Ask
 from repopilot.dependencies import analyze_dependencies
-from repopilot.grounding import DocumentationEvidence, Evidence, Source, grounded_answer
+from repopilot.grounding import (
+    DocumentationEvidence,
+    Evidence,
+    NoteEvidence,
+    Source,
+    grounded_answer,
+)
 from repopilot.official_docs import DEFAULTS, FRESH
 from repopilot.python_facts import Span
 from repopilot.retrieval import CONTEXT_CHARS, SOURCE_LIMIT
@@ -47,6 +53,8 @@ class SourcesModel:
 
 def test_routing_decisions_and_shared_budget() -> None:
     catalog = tuple(DEFAULTS)
+    assert route("What do my notes say about dispatch?", "", catalog) == Route(False, False, False, (), True)
+    assert route("Compare our code to my notes.", "", catalog) == Route(True, False, False, (), True)
     assert route("Where is parse_items defined?", "", catalog) == Route(
         True, False, False, ()
     )
@@ -73,6 +81,11 @@ def test_routing_decisions_and_shared_budget() -> None:
     assert selected[:2] == [code[0], doc]
     assert len({x.id for x in selected}) == len(selected) <= SOURCE_LIMIT
     assert sum(len(x.excerpt) for x in selected) <= CONTEXT_CHARS
+    note = NoteEvidence(REPO, SHA, "attachment", "rev", "notes.md", "Enqueue", "/local#heading-1", 0, "Use a queue.")
+    mixed = budget([list(code), [note]])
+    assert note in mixed and sum(len(x.excerpt) for x in mixed) <= CONTEXT_CHARS
+    with pytest.raises(ValueError, match="same snapshot"):
+        grounded_answer("Compare", [code[0], replace(note, sha="b"*40)])
     assert (
         passage("Install the tool. Use a decoder for input.", "decoder input")
         == "Use a decoder for input."

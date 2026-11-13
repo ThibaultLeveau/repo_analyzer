@@ -16,10 +16,18 @@
   {% if answer.status == "ok" %}
     <h3>Answer</h3>
     {% for claim in answer.claims %}
-      {% if claim.documentation %}<h4>Official documentation</h4>
+      {% if claim.notes %}<h4>User note</h4>
+      {% elif claim.documentation %}<h4>Official documentation</h4>
       {% elif claim.history %}<h4>GitHub history</h4>
       {% else %}<h4>Repository observation</h4>{% endif %}
       <p>{{ claim.text }}</p>
+      {% for item in claim.notes %}
+      <details class="answer-source" open>
+        <summary>{{ item.filename }} · {{ item.section }}</summary>
+        <p>Revision <code>{{ item.revision }}</code> · Uploaded {{ item.uploaded|utc }} UTC</p>
+        <a hx-boost="false" href="{{ item.url }}">Open user note section</a>
+      </details>
+      {% endfor %}
       {% for item in claim.documentation %}
       <details class="answer-source" open>
         <summary>{{ item.title }} · {{ item.section }}</summary>
@@ -52,6 +60,7 @@
       "provider_error": "The model is unavailable. Try again.",
       "history_unavailable": "No matching GitHub history has been loaded for this snapshot.",
       "docs_unavailable": "No matching, current official documentation is indexed for this question.",
+      "notes_unavailable": "No matching current user note is available.",
       "ambiguous_revision": "This short SHA matches several commits. Enter a longer SHA."
     }[answer.status] }}</p>
     {% if answer.status == 'history_unavailable' %}{% set owner, repo = repository.split('/') %}

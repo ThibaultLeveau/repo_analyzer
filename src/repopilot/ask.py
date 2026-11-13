@@ -11,6 +11,7 @@ from repopilot.grounding import (
     Claim,
     DocumentationEvidence,
     Evidence,
+    NoteEvidence,
     Source,
     StructuredModel,
     grounded_answer,
@@ -25,6 +26,7 @@ from repopilot.search import CHUNK_CHARS, chunks
 from repopilot.snapshots import SnapshotCache
 from repopilot.state import StateStore
 from repopilot.timeline import explains, timeline
+from repopilot.user_notes import Notes
 from repopilot.vectors import VectorIndex
 
 QUESTION_LIMIT = 1000
@@ -54,6 +56,7 @@ class Ask:
         history: History | None = None,
         docs: OfficialDocs | None = None,
         reranker: Reranker | None = None,
+        notes: Notes | None = None,
     ) -> None:
         self.store = store
         self.retriever = HybridRetriever(cache, vectors)
@@ -61,6 +64,7 @@ class Ask:
         self.history = history
         self.docs = docs
         self.reranker = reranker
+        self.notes = notes
         graph = StateGraph(QuestionState)
         graph.add_node("route_question", self._route)
         graph.add_node("retrieve", self._retrieve)
@@ -143,6 +147,31 @@ class Ask:
         groups: list[list[Source]] = []
         notices: list[str] = []
         failure = Answer("insufficient_evidence")
+        if plan.notes:
+            query = document_query(question, ("user", "project", "local", "uploaded", "attached", "markdown", "my", "note", "notes"))
+            try:
+                matches = self.notes.search(repo, query) if self.notes else []
+            except (TimeoutError, sqlite3.OperationalError):
+                matches = []
+            groups.append(
+                [
+                    NoteEvidence(
+                        repo,
+                        sha,
+                        note.id,
+                        note.revision,
+                        note.filename,
+                        part.section,
+                        note.url(repo, sha) + (part.url or "#user-notes"),
+                        note.uploaded,
+                        passage(part.text, query),
+                    )
+                    for note, part in matches
+                ]
+            )
+            if not matches:
+                failure = Answer("notes_unavailable")
+                notices.append("No matching current user note is available.")
         if plan.history:
             try:
                 history, error = self._history(state)
@@ -244,6 +273,8 @@ class Ask:
 
     @staticmethod
     def _supported(plan: Route, question: str, claim: Claim) -> bool:
+        if claim.notes:
+            return plan.notes
         if claim.history:
             return explains(question, claim.text)
         if plan.history and not (plan.code or plan.docs):

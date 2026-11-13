@@ -10,6 +10,7 @@ _DOCS = re.compile(
     r"\b(?:official|publisher|documentation|docs|library (?:API|guide)|API reference)\b",
     re.IGNORECASE,
 )
+_NOTES = re.compile(r"\b(?:(?:user|project|local|uploaded|attached|my|our) (?:markdown )?notes?|markdown (?:notes?|attachments?)|the note)\b", re.IGNORECASE)
 _LOCAL = re.compile(
     r"\b(?:our |this |the )?(?:repository|repo|codebase|implementation)\b|\b(?:this project|our code|in the code)\b|\b[\w/-]+\.(?:py|js|ts|go)\b",
     re.IGNORECASE,
@@ -67,6 +68,7 @@ class Route:
     history: bool
     docs: bool
     packages: tuple[str, ...]
+    notes: bool = False
 
 
 def route(question: str, target: str, catalog: tuple[str, ...]) -> Route:
@@ -80,8 +82,9 @@ def route(question: str, target: str, catalog: tuple[str, ...]) -> Route:
     )
     history = timeline_requested(question, target)
     docs = bool(_DOCS.search(question) or packages and _USAGE.search(question))
+    notes = bool(_NOTES.search(question))
     return Route(
-        bool(_LOCAL.search(question) or not (history or docs)), history, docs, packages
+        bool(_LOCAL.search(question) or not (history or docs or notes)), history, docs, packages, notes
     )
 
 
