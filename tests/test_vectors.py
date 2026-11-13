@@ -6,10 +6,11 @@ from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from fastapi.testclient import TestClient
 from test_manifests import manifest_snapshot
 
+from repopilot import vectors
 from repopilot.app import create_app
 from repopilot.search import chunks
 from repopilot.snapshots import SnapshotCache
-from repopilot.vectors import BATCH_SIZE, EmbeddingConfig, VectorError, VectorIndex
+from repopilot.vectors import EmbeddingConfig, VectorError, VectorIndex
 
 REPO = "owner/repo"
 SHA = "a" * 40
@@ -25,7 +26,7 @@ class Vectors:
         if self.interrupt and len(self.batches) == 2:
             raise VectorError("Provider quota reached.")
         return [
-            [float("database" in text), float("database" not in text)]
+            ([1.0, 0.0] if "database" in text else [0.0, float(len(text))])
             + [0.0] * (config.dimensions - 2)
             for text in texts
         ]
@@ -38,18 +39,31 @@ def test_reopen_resume_and_query_only_a_complete_snapshot(
         pytest.fail("The Chroma default embedding function ran")
 
     monkeypatch.setattr(DefaultEmbeddingFunction, "__call__", unexpected_download)
-    files = {f"src/{i:02}.txt": f"source {i}" for i in range(BATCH_SIZE + 1)}
-    files["src/target.txt"] = "\nUse the database for persistence.\n"
+    monkeypatch.setattr(vectors, "BATCH_SIZE", 2)
+    files = {
+        "src/build.txt": "Build the package.",
+        "src/format.txt": "Format the source tree.",
+        "src/lint.txt": "Lint sources.",
+        "src/target.txt": "\nUse the database for persistence.\n",
+    }
+    config = EmbeddingConfig("fixture", 2)
+    fixture = Vectors()
+    embeddings = dict(
+        zip(files, fixture.embed(list(files.values()), config), strict=True)
+    )
+    assert len(set(map(tuple, embeddings.values()))) == len(files)
+    assert fixture.embed(["database"], config) == [embeddings["src/target.txt"]]
+
     snapshot = manifest_snapshot(tmp_path / "sources", files)
     cache = SnapshotCache(tmp_path / "sources")
     provider = Vectors()
     provider.interrupt = True
-    config = EmbeddingConfig("fixture", 2)
     index = VectorIndex(tmp_path, cache, provider, config)
     assert index.nearest(REPO, SHA, "database") == [] and not provider.batches
     with pytest.raises(VectorError, match="quota"):
         index.build(REPO, SHA)
-    assert [len(b) for b in provider.batches] == [BATCH_SIZE, 2]
+    assert [len(b) for b in provider.batches] == [2, 2]
+    assert any("database" in text for text in provider.batches[1])
     assert index.nearest(REPO, SHA, "database") == [] and len(provider.batches) == 2
 
     resumed = VectorIndex(tmp_path, cache, provider, config)
