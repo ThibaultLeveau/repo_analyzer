@@ -107,8 +107,12 @@ def _object(response: httpx2.Response) -> dict[str, object]:
     return data
 
 
-def resolve_repository(url: str, client: httpx2.Client) -> RepositoryHead:
+def resolve_repository(
+    url: str, client: httpx2.Client, *, revision: str | None = None
+) -> RepositoryHead:
     name = repository_name(url)
+    if revision is not None and not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise GitHubError("Expected a full commit SHA")
     metadata = _object(api_get(client, f"{_API}/repos/{name}"))
     if metadata.get("private") is not False:
         raise GitHubError("GitHub did not identify a public repository")
@@ -118,9 +122,14 @@ def resolve_repository(url: str, client: httpx2.Client) -> RepositoryHead:
     if not isinstance(branch, str) or not branch.strip():
         raise GitHubError("Repository has no default branch")
     commit = _object(
-        api_get(client, f"{_API}/repos/{canonical}/commits/{quote(branch, safe='')}")
+        api_get(
+            client,
+            f"{_API}/repos/{canonical}/commits/{quote(revision or branch, safe='')}",
+        )
     )
     sha = commit.get("sha")
     if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise GitHubError("GitHub returned an invalid commit SHA")
+    if revision and sha != revision:
+        raise GitHubError("GitHub returned a different revision")
     return RepositoryHead(canonical, branch, sha)
