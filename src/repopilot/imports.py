@@ -3,16 +3,22 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
-from typing import NotRequired, TypedDict
+from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 import httpx2
 from filelock import FileLock
 from langgraph.graph import END, START, StateGraph
 
+from repopilot.architecture import Architecture
+from repopilot.artifacts import Artifacts
 from repopilot.github import GitHubError, repository_name, resolve_repository
+from repopilot.grounding import StructuredModel
 from repopilot.models import RepositoryHead
 from repopilot.snapshots import SnapshotCache, SnapshotError
 from repopilot.state import Job, JobStateError, StateStore
+
+if TYPE_CHECKING:
+    from repopilot.vectors import Embedder
 
 log = logging.getLogger(__name__)
 
@@ -29,11 +35,17 @@ class ImportService:
         cache: SnapshotCache,
         client: httpx2.Client,
         workers: ThreadPoolExecutor,
+        *,
+        model: StructuredModel | None = None,
+        embedder: "Embedder | None" = None,
+        artifacts: Artifacts | None = None,
     ) -> None:
         self.store = store
         self.cache = cache
         self.client = client
         self.workers = workers
+        self.architecture = Architecture(cache, store, model, artifacts)
+        self.embedder = embedder
         graph = StateGraph(ImportState)
         graph.add_node("resolve", self._resolve)
         graph.add_node("fetch", self._fetch)
@@ -52,10 +64,25 @@ class ImportService:
         if job.status != "failed":
             raise JobStateError("Only failed imports can be retried")
         head, _ = self.store.source(job.id)
-        return self._schedule(job.repository, head)
+        refresh = self.store.refresh_info(job_id)
+        return self._schedule(
+            refresh.previous_repo if refresh else job.repository,
+            head,
+            previous_sha=refresh.previous_sha if refresh else None,
+        )
 
-    def _schedule(self, name: str, head: RepositoryHead | None = None) -> Job:
-        job, created = self.store.submit(name, pinned=head)
+    def refresh(self, name: str, sha: str) -> Job:
+        self.cache.open(name, sha)
+        return self._schedule(name, previous_sha=self.store.active_sha(name) or sha)
+
+    def _schedule(
+        self,
+        name: str,
+        head: RepositoryHead | None = None,
+        *,
+        previous_sha: str | None = None,
+    ) -> Job:
+        job, created = self.store.submit(name, pinned=head, previous_sha=previous_sha)
         if created:
             self.workers.submit(self.run, job.id)
         return job
@@ -85,12 +112,28 @@ class ImportService:
         self.store.mark_fetched(state["job_id"])
 
     def _publish(self, state: ImportState) -> None:
-        self.store.complete(state["job_id"], state["head"].sha)
+        job_id, head = state["job_id"], state["head"]
+        info = self.store.refresh_info(job_id)
+        manifest = None
+        if info:
+            from repopilot.refresh import Refresh
+            from repopilot.vectors import VectorIndex
+
+            vectors = VectorIndex(self.store.path.parent, self.cache, self.embedder)
+            manifest = Refresh(self.architecture, vectors).prepare(
+                head, info.previous_repo, info.previous_sha
+            )
+        self.store.complete(job_id, head.sha, manifest=manifest)
 
 
 @contextmanager
 def import_service(
-    data_dir: Path, *, transport: httpx2.BaseTransport | None = None
+    data_dir: Path,
+    *,
+    transport: httpx2.BaseTransport | None = None,
+    model: StructuredModel | None = None,
+    embedder: "Embedder | None" = None,
+    artifacts: Artifacts | None = None,
 ) -> Iterator[ImportService]:
     data_dir.mkdir(parents=True, exist_ok=True)
     # Only the worker that owns this directory may recover interrupted jobs.
@@ -101,7 +144,13 @@ def import_service(
     ):
         store = StateStore(data_dir / "state.db")
         service = ImportService(
-            store, SnapshotCache(data_dir / "sources"), client, workers
+            store,
+            SnapshotCache(data_dir / "sources"),
+            client,
+            workers,
+            model=model,
+            embedder=embedder,
+            artifacts=artifacts,
         )
         for job_id in store.recover_interrupted():
             workers.submit(service.run, job_id)
