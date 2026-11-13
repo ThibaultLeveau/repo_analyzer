@@ -1,6 +1,12 @@
 <section class="panel guide" aria-label="Search results">
   {% if error %}<p role="alert">{{ error }}</p>
   {% elif not query.strip() %}<p>Enter a path, symbol or source text to search this snapshot.</p>
+  {% elif groups %}{% for label, items in groups.items() %}
+    <section aria-label="{{ label }}"><h2>{{ label }}</h2>
+      <ul class="search-results">{% for item in items %}<li>
+        <a href="{{ item.url }}" hx-boost="false">{{ item.label }}</a><small>{{ item.detail }}</small>
+      </li>{% endfor %}</ul>
+    </section>{% endfor %}
   {% elif not hits %}<p>No matches for “{{ query }}”.</p>
   {% else %}
   <ol class="search-results">
@@ -16,6 +22,9 @@
   </ol>
   {% endif %}
 </section>
+{% set search_url = url_for('search_view', owner=repository.split('/')[0], repo=repository.split('/')[1], sha=sha) %}
+{% if scope == 'workspace' %}<a href="{{ search_url.include_query_params(q=query, scope='code') }}">Search code with the semantic index</a>
+{% else %}<a href="{{ search_url.include_query_params(q=query, scope='workspace') }}">Search files, symbols, issues and commits</a>{% endif %}
 <form class="history" action="{{ index_url }}" method="post" hx-boost="false">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <button type="submit" class="button">Build semantic index</button>

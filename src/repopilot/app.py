@@ -33,6 +33,7 @@ from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
 from repopilot.languages import supported
 from repopilot.maintenance import maintenance_fix
 from repopilot.module_graph import arrow
+from repopilot.navigation import grouped
 from repopilot.official_docs import OfficialDocs, source_for
 from repopilot.patches import dependency_fix
 from repopilot.recommendations import recommend
@@ -168,6 +169,7 @@ def create_app(
                 "fragment": fragment,
                 "csrf": csrf,
                 "query_limit": QUERY_LIMIT,
+                "workspace_revisions": engine.store.workspace_revisions(),
                 **context,
             },
             status_code=status_code,
@@ -1079,7 +1081,13 @@ def create_app(
 
     @app.get("/repos/{owner}/{repo}/{sha}/search", response_class=HTMLResponse)
     def search_view(
-        request: Request, owner: str, repo: str, sha: str, q: str = "", notice: str = ""
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        q: str = "",
+        notice: str = "",
+        scope: Literal["code", "workspace"] = "code",
     ) -> HTMLResponse:
         repository = f"{owner}/{repo}"
         paths = {"owner": owner, "repo": repo, "sha": sha}
@@ -1089,10 +1097,23 @@ def create_app(
             raise HTTPException(404, "Snapshot not found") from exc
         error = ""
         hits = []
+        groups = {}
         if len(q) > QUERY_LIMIT:
             error = f"Enter at most {QUERY_LIMIT} characters."
         elif q.strip():
-            hits = questions().retriever.retrieve(repository, sha, q).hits()
+            retriever = questions().retriever
+            if scope == "workspace":
+                groups = grouped(
+                    repository,
+                    sha,
+                    q,
+                    retriever.index(repository, sha).search(q),
+                    issue_pages.read(repository),
+                    histories.observations(repository, sha),
+                    engine.store.snapshots(repository),
+                )
+            else:
+                hits = retriever.retrieve(repository, sha, q).hits()
         return page(
             request,
             "Search",
@@ -1104,6 +1125,8 @@ def create_app(
             index_url=request.url_for("build_index", **paths),
             index_notice=notice,
             hits=hits,
+            groups=groups,
+            scope=scope,
             error=error,
         )
 

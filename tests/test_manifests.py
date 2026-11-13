@@ -9,7 +9,13 @@ from repopilot.models import RepositoryHead
 from repopilot.snapshots import SnapshotCache, SourceSnapshot
 
 
-def manifest_snapshot(root: Path, files: dict[str, str]) -> SourceSnapshot:
+def manifest_snapshot(
+    root: Path,
+    files: dict[str, str],
+    *,
+    repository: str = "owner/repo",
+    sha: str = "a" * 40,
+) -> SourceSnapshot:
     data = io.BytesIO()
     with zipfile.ZipFile(data, "w") as archive:
         for path, source in files.items():
@@ -20,7 +26,7 @@ def manifest_snapshot(root: Path, files: dict[str, str]) -> SourceSnapshot:
         )
     ) as client:
         return SnapshotCache(root).fetch(
-            RepositoryHead("owner/repo", "main", "a" * 40), client
+            RepositoryHead(repository, "main", sha), client
         )
 
 

@@ -2,7 +2,19 @@
 <div id="workspace" hx-boost="true" hx-target="#workspace" hx-swap="outerHTML">
   <header class="topbar">
     <a class="brand" href="{{ url_for('overview') }}"><span class="mark" aria-hidden="true">◇</span>RepoPilot</a>
-    <span class="repo-context">{% if repository %}{{ repository }} · {{ sha[:8] }}{% elif job %}{{ head.full_name if head else job.repository }}{% if job.sha %} · {{ job.sha[:8] }}{% endif %}{% else %}No repository selected{% endif %}</span>
+    {% if workspace_revisions %}
+    {% set active = namespace(branch='') %}{% if repository and sha %}{% for item in workspace_revisions if item.repository|lower == repository|lower and item.sha == sha %}{% set active.branch = item.branch %}{% endfor %}{% endif %}
+    <details class="repo-switcher">
+      <summary aria-label="Switch repository or snapshot">
+        {% if repository and sha %}{{ repository }} · {% if active.branch %}{{ active.branch }} · {% endif %}{{ sha[:8] }}{% else %}Switch repository{% endif %}
+      </summary>
+      <ul aria-label="Analyzed snapshots">{% for item in workspace_revisions %}
+        <li><a href="{{ url_for('architecture_view', owner=item.repository.split('/')[0], repo=item.repository.split('/')[1], sha=item.sha) }}" hx-boost="false"
+          {% if repository and repository|lower == item.repository|lower and sha == item.sha %}aria-current="page"{% endif %}>
+          {{ item.repository }} · {% if item.branch %}{{ item.branch }} · {% endif %}{{ item.sha[:12] }}</a></li>
+      {% endfor %}</ul>
+    </details>
+    {% else %}<span class="repo-context">{% if repository %}{{ repository }} · {{ sha[:8] }}{% elif job %}{{ head.full_name if head else job.repository }}{% if job.sha %} · {{ job.sha[:8] }}{% endif %}{% else %}No repository selected{% endif %}</span>{% endif %}
     {% if repository and sha %}
     {% set owner, repo = repository.split('/') %}
     <form action="{{ url_for('refresh_repo', owner=owner, repo=repo, sha=sha) }}" method="post" hx-boost="false">
@@ -10,7 +22,8 @@
       <button type="submit">Refresh repository</button>
     </form>
     <form class="header-search" role="search" method="get" action="{{ url_for('search_view', owner=owner, repo=repo, sha=sha) }}" hx-boost="false">
-      <input type="search" name="q" aria-label="Search this snapshot" placeholder="Search this snapshot" maxlength="{{ query_limit }}" value="{{ query|default('') }}">
+      <input type="hidden" name="scope" value="{{ 'code' if scope == 'code' else 'workspace' }}">
+      <input type="search" name="q" aria-label="Search this snapshot" aria-keyshortcuts="Control+k Meta+k" placeholder="Search · Ctrl / ⌘ K" maxlength="{{ query_limit }}" value="{{ query|default('') }}">
       <button type="submit">Search</button>
     </form>
     {% endif %}

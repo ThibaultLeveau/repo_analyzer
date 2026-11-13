@@ -95,6 +95,13 @@ class Snapshot:
 
 
 @dataclass(frozen=True)
+class WorkspaceRevision:
+    repository: str
+    sha: str
+    branch: str | None
+
+
+@dataclass(frozen=True)
 class RefreshInfo:
     previous_repo: str
     previous_sha: str
@@ -202,6 +209,16 @@ class StateStore:
                 (repository,),
             )
             return [Snapshot(**row) for row in rows]
+
+    def workspace_revisions(self) -> list[WorkspaceRevision]:
+        with self._connection() as db:
+            rows = db.execute("""
+                SELECT s.repository,s.sha,
+                    (SELECT p.default_branch FROM import_sources p JOIN jobs j ON j.id=p.job_id
+                     WHERE j.repository=s.repository AND p.sha=s.sha AND j.status='completed'
+                       AND j.ref IN ('HEAD','refresh') ORDER BY j.id DESC LIMIT 1) AS branch
+                FROM snapshots s ORDER BY s.repository,s.created_at DESC,s.sha""")
+            return [WorkspaceRevision(**row) for row in rows]
 
     def module_roles(
         self, repository: str, sha: str, model: str
