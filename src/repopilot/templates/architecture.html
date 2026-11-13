@@ -38,6 +38,7 @@
     {% else %}<a href="{{ explorer_url.include_query_params(path=selected.path) }}">Open empty source file</a>{% endfor %}
     <small>Commit <code>{{ sha }}</code></small>
   </section>
+  {% include "module_graph.html" %}
 </div>
 {% else %}<p>No readable Python modules in this snapshot.</p>{% endif %}
 {% if diagnostics %}<details class="panel guide"><summary>Analysis diagnostics ({{ diagnostics|length }})</summary>

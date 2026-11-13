@@ -9,6 +9,7 @@ from repopilot.grounding import (
     StructuredModel,
     grounded_answer,
 )
+from repopilot.module_graph import ModuleGraph
 from repopilot.python_facts import Diagnostic, Module, Span
 from repopilot.snapshots import SnapshotCache
 from repopilot.state import StateStore
@@ -97,6 +98,10 @@ class Architecture:
         self.artifacts = artifacts or Artifacts()
         self.model_name = os.getenv("REPOPILOT_CHAT_MODEL") or DEFAULT_MODEL
         self.inventory = lru_cache(maxsize=4)(self._inventory)
+        self.graph = lru_cache(maxsize=4)(self._graph)
+
+    def _graph(self, repository: str, sha: str) -> ModuleGraph:
+        return ModuleGraph(self.artifacts.python(self.cache.open(repository, sha)))
 
     def _inventory(
         self, repository: str, sha: str
