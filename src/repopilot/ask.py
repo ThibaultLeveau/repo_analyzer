@@ -122,20 +122,25 @@ class Ask:
         }
 
     def _save(self, state: QuestionState) -> dict[str, int]:
-        answer = state["answer"]
+        return {
+            "answer_id": self.save(
+                state["repository"], state["sha"], state["question"], state["answer"]
+            )
+        }
+
+    def save(self, repository: str, sha: str, question: str, answer: Answer) -> int:
         ids = list(
             dict.fromkeys(
                 source.id for claim in answer.claims for source in claim.sources
             )
         )
-        saved_id = self.store.save_question(
-            state["repository"],
-            state["sha"],
-            state["question"],
+        return self.store.save_question(
+            repository,
+            sha,
+            question,
             _ANSWER.dump_json(answer).decode(),
             ids,
         )
-        return {"answer_id": saved_id}
 
     def saved(self, repository: str, sha: str, answer_id: int) -> tuple[str, Answer]:
         question, payload = self.store.question(repository, sha, answer_id)

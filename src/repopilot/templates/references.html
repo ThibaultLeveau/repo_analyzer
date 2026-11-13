@@ -1,0 +1,30 @@
+<section class="panel ask-pane" aria-label="Symbol references">
+  <h2>{{ detail.symbol.name }}</h2>
+  <p>This {{ detail.symbol.kind }} is defined at {{ path }} · L{{ detail.symbol.span.start }}–{{ detail.symbol.span.end }}.
+    The index found {{ detail.incoming|length }} incoming, {{ detail.outgoing|length }} outgoing and {{ detail.tests|length }} test references.</p>
+  {% for heading, refs in [('Incoming calls and imports', detail.incoming), ('Outgoing calls and imports', detail.outgoing), ('Test references', detail.tests)] %}
+    <h3>{{ heading }}</h3>
+    {% if refs %}
+    <ul>
+      {% for ref in refs %}
+      <li>
+        <a hx-boost="false" href="{{ explorer_url.include_query_params(path=ref.span.path, line=ref.span.start, end=ref.span.end) }}#L{{ ref.span.start }}">{{ ref.caller }} · {{ ref.span.path }}:{{ ref.span.start }}</a>
+        {{ ref.kind }} · {{ ref.text }}
+        {% if ref.target %}
+          {% set dest = explorer_url.include_query_params(path=ref.target.span.path) %}
+          {% if ref.target.kind is defined %}{% set dest = dest.include_query_params(definition=ref.target.name, line=ref.target.span.start, end=ref.target.span.end) ~ '#L' ~ ref.target.span.start %}{% endif %}
+          <a hx-boost="false" href="{{ dest }}">{{ ref.target.name }}</a>
+        {% else %}<small>Unresolved</small>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p>None found.</p>{% endif %}
+  {% endfor %}
+  <form action="{{ explain_url }}" method="post" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="path" value="{{ path }}">
+    <input type="hidden" name="name" value="{{ detail.symbol.name }}">
+    <input type="hidden" name="line" value="{{ detail.symbol.span.start }}">
+    <button class="button" type="submit">Explain symbol</button>
+  </form>
+</section>
