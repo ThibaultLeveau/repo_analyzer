@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "sha": "98a44c604d3c837982b1429019299345a3dbb859",
+  "k": 2,
+  "queries": [
+    {"id":"symbol", "question":"load_catalog", "expected":[{"path":"src/catalog.py","start":4,"end":5},{"path":"tests/test_catalog.py","start":1,"end":1}]},
+    {"id":"paraphrase", "question":"Where is the configuration deserialized?", "expected":[{"path":"src/catalog.py","start":5,"end":5}]},
+    {"id":"setup", "question":"python -m pip install", "expected":[{"path":"README.md","start":4,"end":4}]},
+    {"id":"package", "question":"PyYAML", "expected":[{"path":"requirements.txt","start":1,"end":1}]},
+    {"id":"test", "question":"test_config", "expected":[{"path":"tests/test_catalog.py","start":3,"end":4}]}
+  ],
+  "minimum_recall": {
+    "lexical": {"symbol":1, "paraphrase":0, "setup":1, "package":1, "test":1},
+    "vector": {"symbol":1, "paraphrase":1, "setup":1, "package":1, "test":1},
+    "hybrid": {"symbol":1, "paraphrase":1, "setup":1, "package":1, "test":1}
+  }
+}
