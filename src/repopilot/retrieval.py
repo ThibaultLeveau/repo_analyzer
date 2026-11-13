@@ -23,48 +23,7 @@ CANDIDATE_LIMIT = 24
 SOURCE_LIMIT = 6
 CONTEXT_CHARS = 6000
 _STOP = frozenset(
-    [
-        "a",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "by",
-        "can",
-        "code",
-        "defined",
-        "do",
-        "does",
-        "file",
-        "for",
-        "from",
-        "how",
-        "i",
-        "in",
-        "is",
-        "it",
-        "me",
-        "of",
-        "on",
-        "or",
-        "project",
-        "repository",
-        "show",
-        "that",
-        "the",
-        "this",
-        "to",
-        "us",
-        "use",
-        "what",
-        "where",
-        "which",
-        "who",
-        "why",
-        "with",
-    ]
+    ["a", "an", "and", "are", "as", "at", "be", "by", "can", "code", "defined", "do", "does", "file", "for", "from", "how", "i", "in", "is", "it", "me", "of", "on", "or", "project", "repository", "show", "that", "the", "this", "to", "us", "use", "what", "where", "which", "who", "why", "with"]
 )
 
 
