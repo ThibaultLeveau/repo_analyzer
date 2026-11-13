@@ -16,6 +16,7 @@ from chromadb.errors import NotFoundError
 from filelock import FileLock, Timeout
 from openai import OpenAI, OpenAIError
 
+from repopilot.artifacts import CHUNK_SCHEMA
 from repopilot.python_facts import Span
 from repopilot.search import RESULT_LIMIT, Chunk, chunks
 from repopilot.snapshots import SnapshotCache
@@ -102,7 +103,13 @@ class VectorIndex:
         self.config = config
 
     def _name(self, repository: str, sha: str) -> str:
-        key = [1, repository.lower(), sha, self.config.model, self.config.dimensions]
+        key = [
+            CHUNK_SCHEMA,
+            repository.lower(),
+            sha,
+            self.config.model,
+            self.config.dimensions,
+        ]
         return "snapshot-" + hashlib.sha256(json.dumps(key).encode()).hexdigest()
 
     def _client(self) -> Client:

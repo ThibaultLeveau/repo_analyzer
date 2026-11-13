@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 from packaging.utils import canonicalize_name
 
 from repopilot.manifests import Declaration, ManifestReport, parse_manifests
-from repopilot.python_facts import ImportFact, analyze_python
+from repopilot.python_facts import ImportFact, PythonFacts, analyze_python
 from repopilot.snapshots import SourceSnapshot
 
 _PROVIDERS = {
@@ -65,14 +65,16 @@ class DependencyReport:
     packages: dict[str, Dependency]
 
 
-def analyze_dependencies(snapshot: SourceSnapshot) -> DependencyReport:
+def analyze_dependencies(
+    snapshot: SourceSnapshot, *, facts: PythonFacts | None = None
+) -> DependencyReport:
     manifests = parse_manifests(snapshot)
     declarations: dict[str, list[Declaration]] = defaultdict(list)
     uses: dict[str, list[Usage]] = defaultdict(list)
     for declaration in manifests.declarations:
         declarations[declaration.name].append(declaration)
 
-    for module in analyze_python(snapshot).modules:
+    for module in (facts or analyze_python(snapshot)).modules:
         path = PurePosixPath(module.span.path)
         is_test = (
             bool({"test", "tests"} & set(path.parts[:-1]))
