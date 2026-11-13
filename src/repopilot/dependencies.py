@@ -4,8 +4,10 @@ from pathlib import PurePosixPath
 
 from packaging.utils import canonicalize_name
 
+from repopilot.javascript import SUFFIXES, package_name
+from repopilot.languages import analyze_snapshot
 from repopilot.manifests import Declaration, ManifestReport, parse_manifests
-from repopilot.python_facts import ImportFact, PythonFacts, analyze_python
+from repopilot.python_facts import ImportFact, PythonFacts
 from repopilot.snapshots import SourceSnapshot
 
 _PROVIDERS = {
@@ -31,6 +33,8 @@ _PROVIDERS = {
 
 
 def known_providers(fact: ImportFact) -> tuple[str, ...]:
+    if PurePosixPath(fact.span.path).suffix != ".py":
+        return ()
     imported = f"{fact.target}.{fact.name}" if fact.name else fact.target or ""
     return next(
         (
@@ -90,20 +94,29 @@ def analyze_dependencies(
     for declaration in manifests.declarations:
         declarations[declaration.name].append(declaration)
 
-    for module in (facts or analyze_python(snapshot)).modules:
+    for module in (facts or analyze_snapshot(snapshot)).modules:
         path = PurePosixPath(module.span.path)
-        if path.suffix != ".py":
+        javascript = path.suffix in SUFFIXES
+        if path.suffix != ".py" and not javascript:
             continue
         is_test = (
             bool({"test", "tests"} & set(path.parts[:-1]))
             or path.name.startswith("test_")
             or path.name.endswith("_test.py")
+            or (javascript and path.stem.endswith((".test", ".spec")))
         )
         for fact in module.imports:
             if fact.kind != "external" or not fact.target:
                 continue
             root = fact.target.split(".")[0]
-            providers = known_providers(fact) or (canonicalize_name(root),)
+            providers = (
+                ("npm:" + package_name(fact.target),)
+                if javascript
+                else known_providers(fact) or (canonicalize_name(root),)
+            )
+            if javascript and providers[0] not in declarations:
+                # Bare imports may resolve through a bundler alias or a workspace package.
+                continue
             candidates = tuple(p for p in providers if p in declarations) or providers
             ambiguous = candidates if len(candidates) > 1 else ()
             for name in candidates:

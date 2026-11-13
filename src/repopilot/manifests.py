@@ -1,3 +1,4 @@
+import json
 import posixpath
 import re
 import tomllib
@@ -5,6 +6,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
+import tree_sitter_json
 import tree_sitter_toml
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
@@ -82,6 +84,82 @@ def _logical_lines(lines: list[str]) -> Iterator[tuple[int, int, str]]:
             parts.clear()
     if parts:
         yield start, len(lines), "".join(parts)
+
+
+def npm_declarations(
+    path: str, text: str
+) -> tuple[list[Declaration], list[Diagnostic]]:
+    declarations: list[Declaration] = []
+    diagnostics: list[Diagnostic] = []
+    raw = text.encode()
+    tree = Parser(Language(tree_sitter_json.language())).parse(raw).root_node
+    if (
+        tree.has_error
+        or not tree.named_children
+        or tree.named_children[0].type != "object"
+    ):
+        diagnostics.append(Diagnostic(path, None, "Invalid package.json object"))
+        return declarations, diagnostics
+    groups = {
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+    }
+    for field in tree.named_children[0].named_children:
+        key, value = (
+            field.child_by_field_name("key"),
+            field.child_by_field_name("value"),
+        )
+        if not key or not value:
+            continue
+        group = json.loads(raw[key.start_byte : key.end_byte])
+        if group not in groups:
+            continue
+        if value.type != "object":
+            diagnostics.append(
+                Diagnostic(
+                    path, value.start_point.row + 1, "Expected a dependency object"
+                )
+            )
+            continue
+        for pair in value.named_children:
+            name, version = (
+                pair.child_by_field_name("key"),
+                pair.child_by_field_name("value"),
+            )
+            if not name or not version or version.type != "string":
+                diagnostics.append(
+                    Diagnostic(
+                        path,
+                        pair.start_point.row + 1,
+                        "Expected a string dependency constraint",
+                    )
+                )
+                continue
+            package = json.loads(raw[name.start_byte : name.end_byte])
+            if not re.fullmatch(
+                r"(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*", package
+            ):
+                diagnostics.append(
+                    Diagnostic(
+                        path, pair.start_point.row + 1, "Unsupported npm package name"
+                    )
+                )
+                continue
+            declarations.append(
+                Declaration(
+                    "npm:" + package,
+                    json.loads(raw[version.start_byte : version.end_byte]),
+                    None,
+                    (),
+                    None,
+                    group,
+                    Span(path, pair.start_point.row + 1, pair.end_point.row + 1),
+                    raw[pair.start_byte : pair.end_byte].decode(),
+                )
+            )
+    return declarations, diagnostics
 
 
 class _Reader:
@@ -271,10 +349,19 @@ class _Reader:
         for group in groups:
             read_group(group, group, set(), ())
 
+    def npm(self, path: str) -> None:
+        text = self.read(path)
+        if text is not None:
+            declarations, diagnostics = npm_declarations(path, text)
+            self.declarations.extend(declarations)
+            self.diagnostics.extend(diagnostics)
+
 
 def revision_declarations(path: str, text: str, group: str) -> tuple[Declaration, ...]:
     reader = _Reader({path: "text"}, lambda _: text)
-    if PurePosixPath(path).name == "pyproject.toml":
+    if PurePosixPath(path).name == "package.json":
+        reader.npm(path)
+    elif PurePosixPath(path).name == "pyproject.toml":
         reader.pyproject(path)
     else:
         reader.requirements(path, group)
@@ -290,7 +377,9 @@ def parse_manifests(snapshot: SourceSnapshot) -> ManifestReport:
     )
     for name in sorted(reader.files):
         path = PurePosixPath(name)
-        if path.name == "pyproject.toml":
+        if path.name == "package.json":
+            reader.npm(name)
+        elif path.name == "pyproject.toml":
             reader.pyproject(name)
         elif path.suffix in {".txt", ".in"} and (
             path.stem.startswith("requirements") or "requirements" in path.parts[:-1]

@@ -33,7 +33,9 @@ def _sha(value: object) -> str:
     return value
 
 
-def _version(declaration: Declaration) -> tuple[SpecifierSet, str | None]:
+def _version(declaration: Declaration) -> tuple[SpecifierSet | str, str | None]:
+    if declaration.name.startswith("npm:"):
+        return declaration.constraint, declaration.url
     return SpecifierSet(declaration.constraint), declaration.url
 
 

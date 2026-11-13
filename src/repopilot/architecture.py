@@ -82,7 +82,8 @@ def static_role(module: Module) -> Role:
     return Role(
         module.name,
         path,
-        "Python package initializer." if module.is_package else "Python module.",
+        ("Python package initializer." if module.is_package else "Python module.")
+        if path.endswith(".py") else "Source module.",
         (module.span,),
     )
 
@@ -110,7 +111,7 @@ class Architecture:
         return self.artifacts.read(
             snapshot.database.parent,
             "audit",
-            f"1.{versions.python}.{versions.dependencies}",
+            f"1.{self.artifacts.facts_version(snapshot)}.{versions.dependencies}",
             TypeAdapter(Audit),
             lambda: analyze_audit(
                 snapshot,
@@ -182,7 +183,7 @@ class Architecture:
             if len(item.excerpt) <= 1600
         ]
         answer = grounded_answer(
-            "Describe the role of each evidenced Python module. Give one short claim per module, "
+            "Describe the role of each evidenced source module. Give one short claim per module, "
             "citing only evidence from that module.",
             evidence,
             model=self.model,
