@@ -529,6 +529,8 @@ def create_app(
         line: int | None = None,
         end: int | None = None,
         answer_id: int | None = None,
+        symbol: str = "",
+        source_page: int | None = None,
     ) -> HTMLResponse:
         repository = f"{owner}/{repo}"
         url = request.url_for("explorer", owner=owner, repo=repo, sha=sha)
@@ -539,7 +541,7 @@ def create_app(
                 request, "Code Explorer", error="Snapshot not found.", status_code=404
             )
         try:
-            view = browse(snapshot, path, line, end)
+            view = browse(snapshot, path, line, end, source_page)
         except FileNotFoundError:
             return page(
                 request,
@@ -556,6 +558,15 @@ def create_app(
                 explorer_url=url,
                 status_code=422,
             )
+        module = None
+        if view.selected and view.selected.kind == "text" and path.endswith(".py"):
+            facts = architecture.artifacts.python(snapshot)
+            module = next((m for m in facts.modules if m.span.path == path), None)
+        symbols = (
+            [s for s in module.symbols if symbol.casefold() in s.name.casefold()]
+            if module
+            else []
+        )
         saved = None
         if answer_id is not None:
             try:
@@ -571,6 +582,9 @@ def create_app(
             sha=sha,
             explorer_url=url,
             view=view,
+            module=module,
+            symbols=symbols,
+            symbol_filter=symbol,
             path=path,
             line=line,
             end=end,

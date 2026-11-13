@@ -1,6 +1,48 @@
 from pathlib import Path
 
 from playwright.sync_api import Page, expect
+from test_manifests import manifest_snapshot
+
+
+def test_filter_and_reopen_nested_symbol_on_mobile(
+    page: Page, app_url: str, tmp_path: Path
+) -> None:
+    code = (
+        "\n" * 199
+        + "class Reader:\n    value = 3\n    def parse(self):\n        return '<tag>λ'\n\ndef helper():\n    pass\n"
+    )
+    manifest_snapshot(tmp_path / "sources", {"src/reader.py": code})
+    url = app_url + "/repos/owner/repo/" + "a" * 40 + "/code?path=src%2Freader.py"
+    page.set_viewport_size({"width": 360, "height": 780})
+    page.goto(url)
+    outline = page.get_by_role("region", name="Symbol outline")
+    for symbol in (
+        "Reader class",
+        "Reader.value variable",
+        "Reader.parse method",
+        "helper function",
+    ):
+        expect(outline.get_by_role("link", name=symbol, exact=True)).to_have_count(1)
+    field = outline.get_by_label("Filter symbols")
+    field.fill("PaRsE")
+    field.press("Enter")
+    expect(outline.get_by_role("link")).to_have_count(1)
+    link = outline.get_by_role("link", name="Reader.parse method")
+    field.focus()
+    page.keyboard.press("Tab")
+    page.keyboard.press("Tab")
+    expect(link).to_be_focused()
+    page.keyboard.press("Enter")
+    source = page.get_by_role("region", name="Source")
+    expect(source.locator("#L202:target.selected")).to_be_in_viewport()
+    expect(source.locator("#L203.selected .tok-string")).to_have_text("'<tag>λ'")
+    expect(source.locator("#L201.selected")).to_have_count(0)
+    assert not source.locator("tag").count()
+    deep = page.url
+    page.goto(url)
+    page.goto(deep)
+    expect(page.locator("#L202:target.selected")).to_be_in_viewport()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
 def test_semantic_index_missing_key_keeps_search_available(

@@ -87,6 +87,14 @@ button { border: 0; cursor: pointer; font: inherit; }
 .source-line { display: flex; width: max-content; min-width: 100%; white-space: pre; }
 .source-line > a { min-width: 3.4rem; margin-right: .85rem; padding-inline: .5rem; text-align: right; color: var(--muted); font: inherit; font-variant-numeric: tabular-nums; }
 .source-line code { tab-size: 4; padding-right: .7rem; }
+.tok-keyword { color: #cba5fb; }
+.tok-string { color: #a9da9e; }
+.tok-number { color: #f1c08c; }
+.tok-comment, .symbol-outline small { color: var(--muted); }
+.symbol-outline { padding-top: 1rem; margin-top: 1rem; border-top: 1px solid var(--line); }
+.symbol-outline form { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .5rem; }
+.symbol-outline label { flex-basis: 100%; margin: 0; }
+.symbol-outline input { min-width: 0; width: 8rem; flex: 1; }
 .line-paging { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: .7rem; font-size: .85rem; }
 .architecture { display: grid; grid-template-columns: minmax(9rem, .7fr) minmax(13rem, 1.2fr) minmax(12rem, 1fr); gap: .8rem; }
 .module-roles, .role-evidence { min-width: 0; padding: 1rem; overflow-wrap: anywhere; align-self: start; }
