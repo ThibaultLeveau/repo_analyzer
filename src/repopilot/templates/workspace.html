@@ -19,6 +19,7 @@
     {% endfor %}
     {% if repository and sha %}
       {% set owner, repo = repository.split('/') %}
+      <a href="{{ url_for('issues_view', owner=owner, repo=repo, sha=sha) }}"{% if title == 'Issues' %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">◎</span>Issues</a>
       <a href="{{ url_for('getting_started', owner=owner, repo=repo, sha=sha) }}"{% if title == 'Getting Started' %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">▤</span>Getting Started</a>
       <a href="{{ url_for('architecture_view', owner=owner, repo=repo, sha=sha) }}"{% if title == 'Architecture' %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">⊞</span>Architecture</a>
       <a href="{{ url_for('dependencies', owner=owner, repo=repo, sha=sha) }}"{% if title == 'Dependencies' %} aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">↳</span>Dependencies</a>
@@ -68,6 +69,8 @@
         <a id="refresh-status" href="{{ url_for('import_status', job_id=job.id) }}">Refresh status</a>
       {% endif %}
     </section>
+    {% elif title == 'Issues' %}
+      {% include "issues.html" %}
     {% elif title == 'Search' %}
       {% include "search.html" %}
     {% elif title == 'Getting Started' %}
