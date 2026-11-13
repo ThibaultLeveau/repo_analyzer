@@ -2,13 +2,14 @@ import os
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 
+from repopilot.artifacts import Artifacts
 from repopilot.grounding import (
     DEFAULT_MODEL,
     Evidence,
     StructuredModel,
     grounded_answer,
 )
-from repopilot.python_facts import Diagnostic, Module, Span, analyze_python
+from repopilot.python_facts import Diagnostic, Module, Span
 from repopilot.snapshots import SnapshotCache
 from repopilot.state import StateStore
 
@@ -88,21 +89,25 @@ class Architecture:
         cache: SnapshotCache,
         store: StateStore,
         model: StructuredModel | None = None,
+        artifacts: Artifacts | None = None,
     ) -> None:
         self.cache = cache
         self.store = store
         self.model = model
+        self.artifacts = artifacts or Artifacts()
         self.model_name = os.getenv("REPOPILOT_CHAT_MODEL") or DEFAULT_MODEL
         self.inventory = lru_cache(maxsize=4)(self._inventory)
 
     def _inventory(
         self, repository: str, sha: str
     ) -> tuple[tuple[Role, ...], tuple[Diagnostic, ...]]:
-        facts = analyze_python(self.cache.open(repository, sha))
+        facts = self.artifacts.python(self.cache.open(repository, sha))
         return tuple(_role(m) for m in facts.modules), facts.diagnostics
 
     def roles(self, repository: str, sha: str) -> list[Role]:
-        saved = self.store.module_roles(repository, sha, self.model_name)
+        saved = self.store.module_roles(
+            repository, sha, self.artifacts.versions.generated_key(self.model_name)
+        )
         roles, _ = self.inventory(repository, sha)
         result = []
         for role in roles:
@@ -163,5 +168,10 @@ class Architecture:
                     claim.text,
                     [(e.span.start, e.span.end) for e in claim.sources],
                 )
-        self.store.save_module_roles(repository, sha, self.model_name, updates)
+        self.store.save_module_roles(
+            repository,
+            sha,
+            self.artifacts.versions.generated_key(self.model_name),
+            updates,
+        )
         return "ok" if updates else "insufficient_evidence"

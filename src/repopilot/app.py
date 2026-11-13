@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from repopilot.architecture import GROUP_SIZE, Architecture, PackageTree
-from repopilot.dependencies import DependencyReport, analyze_dependencies
+from repopilot.dependencies import DependencyReport
 from repopilot.explorer import PAGE_LINES, browse
 from repopilot.github import GitHubError, RateLimited
 from repopilot.grounding import StructuredModel
@@ -281,7 +281,7 @@ def create_app(
 
     @lru_cache(maxsize=4)
     def dependency_report(repository: str, sha: str) -> DependencyReport:
-        return analyze_dependencies(engine.cache.open(repository, sha))
+        return architecture.artifacts.dependencies(engine.cache.open(repository, sha))
 
     @app.get("/repos/{owner}/{repo}/{sha}/dependencies", response_class=HTMLResponse)
     def dependencies(

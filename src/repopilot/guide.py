@@ -5,7 +5,6 @@ from urllib.parse import quote
 
 from repopilot.architecture import Architecture
 from repopilot.grounding import Claim, Evidence, grounded_answer
-from repopilot.onboarding import extract_setup
 from repopilot.python_facts import Span
 
 
@@ -78,11 +77,14 @@ class Guide:
 class Guides:
     def __init__(self, architecture: Architecture) -> None:
         self.architecture = architecture
+        self.notes_key = architecture.artifacts.versions.generated_key(
+            architecture.model_name, guide=True
+        )
         self.base = lru_cache(maxsize=4)(self._base)
 
     def _base(self, repository: str, sha: str) -> Guide:
         snapshot = self.architecture.cache.open(repository, sha)
-        setup = extract_setup(snapshot)
+        setup = self.architecture.artifacts.setup(snapshot)
         source_lines = lru_cache(maxsize=12)(snapshot.lines)
 
         def source(span: Span) -> Evidence:
@@ -177,16 +179,14 @@ class Guides:
             self.architecture.store.save_guide_notes(
                 repository,
                 sha,
-                self.architecture.model_name,
+                self.notes_key,
                 [(c.text, [s.id for s in c.sources]) for c in answer.claims],
             )
         return answer.status
 
     def get(self, repository: str, sha: str) -> Guide:
         guide = self.base(repository, sha)
-        saved = self.architecture.store.guide_notes(
-            repository, sha, self.architecture.model_name
-        )
+        saved = self.architecture.store.guide_notes(repository, sha, self.notes_key)
         sources = self._sources(guide)
         pending = [
             Claim(text, tuple(sources[k] for k in keys))
