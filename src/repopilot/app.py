@@ -52,8 +52,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nonlocal engine, architecture, guides, issue_pages
-        with import_service(directory, transport=transport) as engine:
-            architecture = Architecture(engine.cache, engine.store, model)
+        with import_service(
+            directory, transport=transport, model=model, embedder=embedder
+        ) as engine:
+            architecture = engine.architecture
             guides = Guides(architecture)
             issue_pages = IssuePages(directory, engine.client, clock)
             yield
@@ -139,7 +141,23 @@ def create_app(
         stage = "Resolving repository"
         if head:
             stage = "Publishing snapshot" if fetched else "Downloading source"
-        return page(request, "Repository import", job=job, head=head, stage=stage)
+        refresh = engine.store.refresh_info(job.id)
+        return page(
+            request,
+            "Repository refresh" if refresh else "Repository import",
+            job=job,
+            head=head,
+            stage=stage,
+            refresh=refresh,
+        )
+
+    @app.post("/repos/{owner}/{repo}/{sha}/refresh", dependencies=[Depends(protect)])
+    def refresh_repo(request: Request, owner: str, repo: str, sha: str) -> Response:
+        try:
+            job = engine.refresh(f"{owner}/{repo}", sha)
+        except (FileNotFoundError, SnapshotError, GitHubError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        return job_redirect(request, job)
 
     @app.post("/imports/{job_id}/retry", dependencies=[Depends(protect)])
     def retry_import(request: Request, job_id: int) -> Response:
@@ -431,6 +449,7 @@ def create_app(
 
         try:
             count = vector_index().build(f"{owner}/{repo}", sha)
+            engine.store.remember_vectors(f"{owner}/{repo}", sha)
             notice = f"Semantic index ready with {count} source chunks."
         except (FileNotFoundError, GitHubError, SnapshotError) as exc:
             raise HTTPException(404, "Snapshot not found") from exc

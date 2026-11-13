@@ -5,6 +5,10 @@
     <span class="repo-context">{% if repository %}{{ repository }} · {{ sha[:8] }}{% elif job %}{{ head.full_name if head else job.repository }}{% if job.sha %} · {{ job.sha[:8] }}{% endif %}{% else %}No repository selected{% endif %}</span>
     {% if repository and sha %}
     {% set owner, repo = repository.split('/') %}
+    <form action="{{ url_for('refresh_repo', owner=owner, repo=repo, sha=sha) }}" method="post" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button type="submit">Refresh repository</button>
+    </form>
     <form class="header-search" role="search" method="get" action="{{ url_for('search_view', owner=owner, repo=repo, sha=sha) }}" hx-boost="false">
       <input type="search" name="q" aria-label="Search this snapshot" placeholder="Search this snapshot" maxlength="{{ query_limit }}" value="{{ query|default('') }}">
       <button type="submit">Search</button>
@@ -52,8 +56,12 @@
     <section class="panel guide" aria-live="polite"
       {% if job.status in ['queued', 'running'] %}hx-get="{{ url_for('import_status', job_id=job.id) }}" hx-trigger="load delay:750ms"{% endif %}>
       <h2>{{ head.full_name if head else job.repository }}</h2>
+      {% if refresh %}
+        {% set previous_owner, previous_repo = refresh.previous_repo.split('/') %}
+        <a href="{{ url_for('explorer', owner=previous_owner, repo=previous_repo, sha=refresh.previous_sha) }}">Browse previous commit {{ refresh.previous_sha[:8] }}</a>
+      {% endif %}
       {% if job.status == 'completed' %}
-        <p>Import complete · <code title="{{ job.sha }}">{{ job.sha[:8] }}</code></p>
+        <p>{{ 'Refresh complete' if refresh else 'Import complete' }} · <code title="{{ job.sha }}">{{ job.sha[:8] }}</code></p>
         {% set owner, repo = job.repository.split('/') %}
         <a class="button" href="{{ url_for('explorer', owner=owner, repo=repo, sha=job.sha) }}">Browse source</a>
         <a class="button" href="{{ url_for('architecture_view', owner=owner, repo=repo, sha=job.sha) }}">View architecture</a>

@@ -170,6 +170,18 @@ class VectorIndex:
                 "Indexing is already in progress for this snapshot."
             ) from exc
 
+    def ready(self, repository: str, sha: str) -> bool:
+        if not self.directory.is_dir():
+            return False
+        with self._client() as client:
+            try:
+                collection = client.get_collection(
+                    self._name(repository, sha), embedding_function=None
+                )
+            except NotFoundError:
+                return False
+            return bool((collection.metadata or {}).get("ready"))
+
     def nearest(
         self, repository: str, sha: str, query: str, limit: int = 5
     ) -> list[Neighbor]:

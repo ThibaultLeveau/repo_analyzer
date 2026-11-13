@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY, repository TEXT COLLATE NOCASE NOT NULL, sha TEXT NOT NULL,
     question TEXT NOT NULL, answer TEXT NOT NULL, citations TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS active_snapshots (
+    repository TEXT PRIMARY KEY COLLATE NOCASE, sha TEXT NOT NULL, job_id INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS refreshes (
+    job_id INTEGER PRIMARY KEY REFERENCES jobs(id), previous_repo TEXT NOT NULL, previous_sha TEXT NOT NULL, manifest TEXT
+);
+CREATE TABLE IF NOT EXISTS vector_requests (
+    repository TEXT COLLATE NOCASE, sha TEXT, PRIMARY KEY(repository, sha)
+);
 CREATE TRIGGER IF NOT EXISTS job_transition_time AFTER UPDATE OF status ON jobs
 BEGIN
     UPDATE jobs SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = NEW.id;
@@ -80,6 +89,13 @@ class Snapshot:
     repository: str
     sha: str
     created_at: str
+
+
+@dataclass(frozen=True)
+class RefreshInfo:
+    previous_repo: str
+    previous_sha: str
+    manifest: str | None
 
 
 class JobStateError(ValueError):
@@ -108,10 +124,14 @@ class StateStore:
         ref: str = "HEAD",
         *,
         pinned: RepositoryHead | None = None,
+        previous_sha: str | None = None,
     ) -> tuple[Job, bool]:
         """Return the active job and whether this caller created it."""
-        repository = repository.strip().lower()
-        if pinned is not None:
+        previous_repo = repository.strip()
+        repository = previous_repo.lower()
+        if previous_sha is not None:
+            ref = "refresh"
+        elif pinned is not None:
             ref = pinned.sha
         if not repository or not ref:
             raise ValueError("A repository and reference are required")
@@ -129,6 +149,11 @@ class StateStore:
                 (repository, ref),
             ).fetchone()
             job = Job(**row)
+            if previous_sha is not None:
+                db.execute(
+                    "INSERT INTO refreshes(job_id,previous_repo,previous_sha) VALUES (?,?,?)",
+                    (job.id, previous_repo, previous_sha),
+                )
             if pinned is not None:
                 self._pin(db, job.id, pinned)
             return job, True
@@ -224,7 +249,12 @@ class StateStore:
             )
 
     def save_question(
-        self, repository: str, sha: str, question: str, answer: str, citations: list[str]
+        self,
+        repository: str,
+        sha: str,
+        question: str,
+        answer: str,
+        citations: list[str],
     ) -> int:
         with self._connection(write=True) as db:
             row = db.execute(
@@ -259,7 +289,54 @@ class StateStore:
             if not changed:
                 raise JobStateError("Only queued jobs can start")
 
-    def complete(self, job_id: int, sha: str) -> None:
+    def active_sha(self, repository: str) -> str | None:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT sha FROM active_snapshots WHERE repository=?", (repository,)
+            ).fetchone()
+            if row is None:
+                row = db.execute(
+                    "SELECT sha FROM jobs WHERE repository=? AND status='completed' ORDER BY id DESC LIMIT 1",
+                    (repository,),
+                ).fetchone()
+        return str(row[0]) if row else None
+
+    def refresh_info(self, job_id: int) -> RefreshInfo | None:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT previous_repo,previous_sha,manifest FROM refreshes WHERE job_id=?",
+                (job_id,),
+            ).fetchone()
+        return RefreshInfo(**row) if row else None
+
+    def remember_vectors(self, repository: str, sha: str) -> None:
+        with self._connection(write=True) as db:
+            db.execute(
+                "INSERT OR IGNORE INTO vector_requests VALUES (?,?)", (repository, sha)
+            )
+
+    def refresh_features(
+        self, repository: str, sha: str
+    ) -> tuple[set[str], bool, bool]:
+        with self._connection() as db:
+            paths = {
+                r[0]
+                for r in db.execute(
+                    "SELECT DISTINCT path FROM module_roles WHERE repository=? AND sha=?",
+                    (repository, sha),
+                )
+            }
+            guide = db.execute(
+                "SELECT 1 FROM guide_notes WHERE repository=? AND sha=? LIMIT 1",
+                (repository, sha),
+            ).fetchone()
+            vectors = db.execute(
+                "SELECT 1 FROM vector_requests WHERE repository=? LIMIT 1",
+                (repository,),
+            ).fetchone()
+        return paths, bool(guide), bool(vectors)
+
+    def complete(self, job_id: int, sha: str, *, manifest: str | None = None) -> None:
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise ValueError("A full lowercase commit SHA is required")
         with self._connection(write=True) as db:
@@ -282,6 +359,14 @@ class StateStore:
                 "UPDATE jobs SET status = 'completed', repository = ?, sha = ? WHERE id = ?",
                 (repository, sha, job_id),
             )
+            db.execute(
+                "INSERT INTO active_snapshots VALUES (?,?,?) ON CONFLICT(repository) DO UPDATE SET sha=excluded.sha,job_id=excluded.job_id WHERE excluded.job_id>=active_snapshots.job_id",
+                (repository, sha, job_id),
+            )
+            if manifest is not None:
+                db.execute(
+                    "UPDATE refreshes SET manifest=? WHERE job_id=?", (manifest, job_id)
+                )
 
     def fail(self, job_id: int, message: str) -> None:
         message = " ".join(message.split())[:240] or "Analysis failed"
