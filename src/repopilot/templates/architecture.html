@@ -41,6 +41,11 @@
   {% include "module_graph.html" %}
 </div>
 {% else %}<p>No readable Python modules in this snapshot.</p>{% endif %}
+<section class="panel guide history" aria-label="Quality">
+  <h2>Quality</h2>
+  <p><strong class="finding-count">{{ audit.findings|length }} static {{ 'finding' if audit.findings|length == 1 else 'findings' }}</strong> · {{ audit.test_files }} conventionally named test {{ 'file' if audit.test_files == 1 else 'files' }}</p>
+  <a href="{{ audit_url }}">Open quality audit</a>
+</section>
 {% if diagnostics %}<details class="panel guide"><summary>Analysis diagnostics ({{ diagnostics|length }})</summary>
   <ul>{% for item in diagnostics %}<li><a href="{{ explorer_url.include_query_params(path=item.path) }}">{{ item.path }}</a> · {{ item.message }}</li>{% endfor %}</ul>
 </details>{% endif %}

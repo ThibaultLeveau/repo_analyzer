@@ -3,6 +3,7 @@ from dataclasses import dataclass, field, replace
 from functools import lru_cache
 
 from repopilot.artifacts import Artifacts
+from repopilot.audit import Audit, analyze_audit
 from repopilot.grounding import (
     DEFAULT_MODEL,
     Evidence,
@@ -99,6 +100,15 @@ class Architecture:
         self.model_name = os.getenv("REPOPILOT_CHAT_MODEL") or DEFAULT_MODEL
         self.inventory = lru_cache(maxsize=4)(self._inventory)
         self.graph = lru_cache(maxsize=4)(self._graph)
+        self.audit = lru_cache(maxsize=4)(self._audit)
+
+    def _audit(self, repository: str, sha: str) -> Audit:
+        snapshot = self.cache.open(repository, sha)
+        return analyze_audit(
+            snapshot,
+            self.artifacts.python(snapshot),
+            self.artifacts.dependencies(snapshot),
+        )
 
     def _graph(self, repository: str, sha: str) -> ModuleGraph:
         return ModuleGraph(self.artifacts.python(self.cache.open(repository, sha)))

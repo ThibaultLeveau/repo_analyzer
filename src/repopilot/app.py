@@ -331,6 +331,38 @@ def create_app(
             dependencies_url=request.url_for("dependencies", **paths),
         )
 
+    @app.get("/repos/{owner}/{repo}/{sha}/audit", response_class=HTMLResponse)
+    def audit_view(
+        request: Request, owner: str, repo: str, sha: str, finding: str = ""
+    ) -> HTMLResponse:
+        repository = f"{owner}/{repo}"
+        try:
+            report = architecture.audit(repository, sha)
+        except (FileNotFoundError, GitHubError, SnapshotError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        selected = next((f for f in report.findings if f.key == finding), None)
+        if finding and selected is None:
+            raise HTTPException(404, "Finding not found in this snapshot")
+        if selected is None and report.findings:
+            selected = report.findings[0]
+        excerpt: list[str] = []
+        if selected:
+            span = selected.span
+            lines = engine.cache.open(repository, sha).lines(span.path)
+            excerpt = lines[span.start - 1 : min(span.end, span.start + 7)]
+        paths = {"owner": owner, "repo": repo, "sha": sha}
+        return page(
+            request,
+            "Quality audit",
+            repository=repository,
+            sha=sha,
+            report=report,
+            selected=selected,
+            excerpt=excerpt,
+            audit_url=request.url_for("audit_view", **paths),
+            explorer_url=request.url_for("explorer", **paths),
+        )
+
     @app.get("/repos/{owner}/{repo}/{sha}/architecture", response_class=HTMLResponse)
     def architecture_view(
         request: Request,
@@ -362,7 +394,11 @@ def create_app(
             architecture_url=request.url_for("architecture_view", **paths),
             generate_url=request.url_for("generate_roles", **paths),
             tree=PackageTree.build(roles),
-            graph=architecture.graph(repository, sha).neighborhood(selected.path, graph_page)
+            audit=architecture.audit(repository, sha),
+            audit_url=request.url_for("audit_view", **paths),
+            graph=architecture.graph(repository, sha).neighborhood(
+                selected.path, graph_page
+            )
             if selected
             else None,
             arrow=arrow,
