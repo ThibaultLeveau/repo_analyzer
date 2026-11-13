@@ -274,3 +274,19 @@ class Scores:
                 Revision(i, sha, revision, _RESULT.validate_json(data), time, title)
                 for i, sha, revision, data, time, title in rows
             ]
+
+    def snapshot_scores(self, repo: str, sha: str) -> list[tuple[int, Revision]]:
+        with closing(sqlite3.connect(self.path)) as db:
+            rows = db.execute(
+                "SELECT s.issue,s.rowid,s.revision,s.result,d.evaluated_at,d.title FROM scores s LEFT JOIN score_details d ON d.score_id=s.rowid WHERE s.repo=? AND s.sha=? ORDER BY s.issue,s.rowid",
+                (repo.lower(), sha),
+            )
+            return [
+                (
+                    issue,
+                    Revision(
+                        i, sha, revision, _RESULT.validate_json(data), time, title
+                    ),
+                )
+                for issue, i, revision, data, time, title in rows
+            ]

@@ -2,6 +2,8 @@ import os
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 
+from pydantic import TypeAdapter
+
 from repopilot.artifacts import Artifacts
 from repopilot.audit import Audit, analyze_audit
 from repopilot.grounding import (
@@ -43,7 +45,7 @@ class PackageTree:
         return root
 
 
-def _role(module: Module) -> Role:
+def static_role(module: Module) -> Role:
     path = module.span.path
     if module.docstring and module.doc_span:
         return Role(
@@ -104,10 +106,17 @@ class Architecture:
 
     def _audit(self, repository: str, sha: str) -> Audit:
         snapshot = self.cache.open(repository, sha)
-        return analyze_audit(
-            snapshot,
-            self.artifacts.python(snapshot),
-            self.artifacts.dependencies(snapshot),
+        versions = self.artifacts.versions
+        return self.artifacts.read(
+            snapshot.database.parent,
+            "audit",
+            f"1.{versions.python}.{versions.dependencies}",
+            TypeAdapter(Audit),
+            lambda: analyze_audit(
+                snapshot,
+                self.artifacts.python(snapshot),
+                self.artifacts.dependencies(snapshot),
+            ),
         )
 
     def _graph(self, repository: str, sha: str) -> ModuleGraph:
@@ -117,13 +126,18 @@ class Architecture:
         self, repository: str, sha: str
     ) -> tuple[tuple[Role, ...], tuple[Diagnostic, ...]]:
         facts = self.artifacts.python(self.cache.open(repository, sha))
-        return tuple(_role(m) for m in facts.modules), facts.diagnostics
+        return tuple(static_role(m) for m in facts.modules), facts.diagnostics
 
     def roles(self, repository: str, sha: str) -> list[Role]:
+        roles, _ = self.inventory(repository, sha)
+        return self.describe_roles(repository, sha, roles)
+
+    def describe_roles(
+        self, repository: str, sha: str, roles: tuple[Role, ...]
+    ) -> list[Role]:
         saved = self.store.module_roles(
             repository, sha, self.artifacts.versions.generated_key(self.model_name)
         )
-        roles, _ = self.inventory(repository, sha)
         result = []
         for role in roles:
             if role.path in saved:

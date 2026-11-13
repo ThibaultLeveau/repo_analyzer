@@ -27,6 +27,7 @@ from repopilot.issues import Action, Cooldown, IssuePages, QueueBusy
 from repopilot.module_graph import arrow
 from repopilot.patches import dependency_fix
 from repopilot.references import ReferenceIndex
+from repopilot.reports import MEDIA_TYPES, Format, build_report
 from repopilot.scoring import RUBRIC, Scores, assess, easier_first, issue_revision
 from repopilot.search import QUERY_LIMIT
 from repopilot.snapshots import SnapshotError
@@ -179,6 +180,22 @@ def create_app(
     @app.get("/setup", response_class=HTMLResponse)
     def setup(request: Request) -> HTMLResponse:
         return page(request, "Local setup")
+
+    @app.get("/repos/{owner}/{repo}/{sha}/report")
+    def download_report(
+        owner: str, repo: str, sha: str, format: Format = "json"
+    ) -> Response:
+        try:
+            report = build_report(architecture, scores, f"{owner}/{repo}", sha)
+        except (FileNotFoundError, GitHubError, SnapshotError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        return Response(
+            report.render(format),
+            media_type=MEDIA_TYPES[format],
+            headers={
+                "Content-Disposition": f'attachment; filename="{repo}-{sha[:8]}-report.{format}"'
+            },
+        )
 
     def issue_repo(owner: str, repo: str, sha: str) -> str:
         repository = f"{owner}/{repo}"

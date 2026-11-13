@@ -8,6 +8,7 @@ from pathlib import Path
 from filelock import FileLock
 from pydantic import TypeAdapter, ValidationError
 
+from repopilot.audit import Audit
 from repopilot.dependencies import DependencyReport, analyze_dependencies
 from repopilot.onboarding import SetupEvidence, extract_setup
 from repopilot.python_facts import PythonFacts, analyze_python
@@ -102,6 +103,50 @@ class Artifacts:
             _SETUP,
             lambda: extract_setup(snapshot),
         )
+
+    def saved_analysis(
+        self, snapshot: SourceSnapshot
+    ) -> tuple[
+        PythonFacts | None, DependencyReport | None, SetupEvidence | None, Audit | None
+    ]:
+        database = snapshot.database.parent / "analysis.db"
+        if not database.is_file():
+            return None, None, None, None
+        with closing(
+            sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as db:
+
+            def saved[T](kind: str, version: str, schema: TypeAdapter[T]) -> T | None:
+                row = db.execute(
+                    "SELECT payload FROM artifacts WHERE kind=? AND version=?",
+                    (kind, version),
+                ).fetchone()
+                if row is not None:
+                    try:
+                        return schema.validate_json(row[0], strict=True)
+                    except ValidationError:
+                        return None
+                return None
+
+            db.execute("BEGIN")
+            if not db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'"
+            ).fetchone():
+                return None, None, None, None
+            return (
+                saved("python", str(self.versions.python), _FACTS),
+                saved(
+                    "dependencies",
+                    f"{self.versions.python}.{self.versions.dependencies}",
+                    _DEPENDENCIES,
+                ),
+                saved("setup", str(self.versions.setup), _SETUP),
+                saved(
+                    "audit",
+                    f"1.{self.versions.python}.{self.versions.dependencies}",
+                    TypeAdapter(Audit),
+                ),
+            )
 
     def prepare(self, snapshot: SourceSnapshot) -> None:
         self.python(snapshot)
