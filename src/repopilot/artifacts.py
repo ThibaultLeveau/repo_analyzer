@@ -3,6 +3,7 @@ import sqlite3
 from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from filelock import FileLock
@@ -11,6 +12,7 @@ from pydantic import TypeAdapter, ValidationError
 from repopilot.audit import Audit
 from repopilot.dependencies import DependencyReport, analyze_dependencies
 from repopilot.events import measure
+from repopilot.javascript import SUFFIXES
 from repopilot.languages import analyze_snapshot
 from repopilot.onboarding import SetupEvidence, extract_setup
 from repopilot.python_facts import PythonFacts
@@ -45,6 +47,19 @@ class AnalysisVersions:
 class Artifacts:
     def __init__(self, versions: AnalysisVersions = AnalysisVersions()) -> None:
         self.versions = versions
+
+    @staticmethod
+    @lru_cache(maxsize=32)
+    def _has_javascript(snapshot: SourceSnapshot) -> bool:
+        return any(
+            e.kind != "directory"
+            and (e.path.endswith(SUFFIXES) or Path(e.path).name == "package.json")
+            for e in snapshot.tree()
+        )
+
+    def facts_version(self, snapshot: SourceSnapshot) -> str:
+        version = str(self.versions.python)
+        return version + "-js1" if self._has_javascript(snapshot) else version
 
     def read[T](
         self,
@@ -86,13 +101,13 @@ class Artifacts:
         return self.read(
             snapshot.database.parent,
             "python",
-            str(self.versions.python),
+            self.facts_version(snapshot),
             _FACTS,
             lambda: analyze_snapshot(snapshot),
         )
 
     def dependencies(self, snapshot: SourceSnapshot) -> DependencyReport:
-        version = f"{self.versions.python}.{self.versions.dependencies}"
+        version = f"{self.facts_version(snapshot)}.{self.versions.dependencies}"
         return self.read(
             snapshot.database.parent,
             "dependencies",
@@ -140,16 +155,16 @@ class Artifacts:
             ).fetchone():
                 return None, None, None, None
             return (
-                saved("python", str(self.versions.python), _FACTS),
+                saved("python", self.facts_version(snapshot), _FACTS),
                 saved(
                     "dependencies",
-                    f"{self.versions.python}.{self.versions.dependencies}",
+                    f"{self.facts_version(snapshot)}.{self.versions.dependencies}",
                     _DEPENDENCIES,
                 ),
                 saved("setup", str(self.versions.setup), _SETUP),
                 saved(
                     "audit",
-                    f"1.{self.versions.python}.{self.versions.dependencies}",
+                    f"1.{self.facts_version(snapshot)}.{self.versions.dependencies}",
                     TypeAdapter(Audit),
                 ),
             )
