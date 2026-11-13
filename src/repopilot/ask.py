@@ -18,9 +18,10 @@ from repopilot.grounding import (
 from repopilot.history import History
 from repopilot.official_docs import DEFAULTS, OfficialDocs
 from repopilot.python_facts import Span
+from repopilot.rerank import MAX_CANDIDATES, Reranker
 from repopilot.retrieval import HybridRetriever
 from repopilot.routing import Route, budget, document_query, passage, route
-from repopilot.search import chunks
+from repopilot.search import CHUNK_CHARS, chunks
 from repopilot.snapshots import SnapshotCache
 from repopilot.state import StateStore
 from repopilot.timeline import explains, timeline
@@ -52,12 +53,14 @@ class Ask:
         model: StructuredModel | None,
         history: History | None = None,
         docs: OfficialDocs | None = None,
+        reranker: Reranker | None = None,
     ) -> None:
         self.store = store
         self.retriever = HybridRetriever(cache, vectors)
         self.model = model
         self.history = history
         self.docs = docs
+        self.reranker = reranker
         graph = StateGraph(QuestionState)
         graph.add_node("route_question", self._route)
         graph.add_node("retrieve", self._retrieve)
@@ -65,7 +68,12 @@ class Ask:
         graph.add_node("save", self._save)
         graph.add_edge(START, "route_question")
         graph.add_edge("route_question", "retrieve")
-        graph.add_edge("retrieve", "answer_question")
+        if reranker:
+            graph.add_node("rerank", self._rerank)
+            graph.add_edge("retrieve", "rerank")
+            graph.add_edge("rerank", "answer_question")
+        else:
+            graph.add_edge("retrieve", "answer_question")
         graph.add_edge("answer_question", "save")
         graph.add_edge("save", END)
         self.graph = graph.compile()
@@ -179,15 +187,26 @@ class Ask:
                 )
         if plan.code:
             try:
-                code = self.retriever.retrieve(
-                    repo, sha, question, state["selected"]
-                ).evidence()
+                result = self.retriever.retrieve(repo, sha, question, state["selected"])
+                code = (
+                    result.evidence(
+                        limit=MAX_CANDIDATES, char_limit=MAX_CANDIDATES * CHUNK_CHARS
+                    )
+                    if self.reranker
+                    else result.evidence()
+                )
             except (TimeoutError, sqlite3.OperationalError):
                 code = []
             groups.append(list(code))
             if not code:
                 notices.append("No matching repository code was available.")
-        evidence = budget(groups)
+        evidence = (
+            budget(
+                groups, limit=MAX_CANDIDATES, char_limit=MAX_CANDIDATES * CHUNK_CHARS
+            )
+            if self.reranker
+            else budget(groups)
+        )
         if not evidence:
             return {
                 "answer": failure,
@@ -195,6 +214,15 @@ class Ask:
                 "notices": tuple(notices) if len(groups) > 1 else (),
             }
         return {"evidence": evidence, "notices": tuple(notices)}
+
+    def _rerank(self, state: QuestionState) -> dict[str, list[Source]]:
+        candidates = state["evidence"]
+        ranked = (
+            self.reranker.rank(state["question"], candidates)
+            if self.reranker
+            else candidates
+        )
+        return {"evidence": budget([ranked])}
 
     def _answer(self, state: QuestionState) -> dict[str, Answer]:
         if "answer" in state:

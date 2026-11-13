@@ -1,7 +1,8 @@
 import argparse
 import json
+import re
 from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from statistics import mean
 from tempfile import TemporaryDirectory
@@ -9,12 +10,14 @@ from time import perf_counter
 
 import httpx2
 from journey_fixture import REPO, Catalog
+from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
 from repopilot.models import RepositoryHead
 from repopilot.python_facts import Span
+from repopilot.rerank import MAX_CANDIDATES, Reranker
 from repopilot.retrieval import HybridRetriever
-from repopilot.search import RESULT_LIMIT, LexicalSearch
+from repopilot.search import CHUNK_CHARS, RESULT_LIMIT, LexicalSearch
 from repopilot.snapshots import SnapshotCache
 from repopilot.vectors import EmbeddingConfig, VectorIndex
 
@@ -60,6 +63,27 @@ class Measurement:
     diversity: float
     elapsed_ms: float
     results: tuple[Span, ...]
+    rerank_calls: int = 0
+
+
+class FixtureRanker:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def invoke(self, messages: list[BaseMessage]) -> object:
+        self.calls += 1
+        raw = messages[-1].content
+        assert isinstance(raw, str)
+        payload = json.loads(raw)
+        terms = set(re.findall(r"\w+", payload["question"].casefold()))
+        ordered = sorted(
+            payload["candidates"],
+            key=lambda item: len(
+                terms.intersection(re.findall(r"\w+", item["excerpt"].casefold()))
+            ),
+            reverse=True,
+        )
+        return {"ids": [item["id"] for item in ordered]}
 
 
 def measure(
@@ -80,11 +104,13 @@ def measure(
 
 
 def evaluate(
-    corpus: Corpus, directory: Path
+    corpus: Corpus, directory: Path, *, compare_rerank: bool = False
 ) -> tuple[str, dict[str, dict[str, Measurement]]]:
     fixture = Catalog()
     if fixture.sha != corpus.sha:
-        raise ValueError("The evaluation fixture changed. Review the labeled source ranges.")
+        raise ValueError(
+            "The evaluation fixture changed. Review the labeled source ranges."
+        )
     cache = SnapshotCache(directory / "sources")
     with httpx2.Client(transport=httpx2.MockTransport(fixture.respond)) as client:
         snapshot = cache.fetch(RepositoryHead(REPO, "main", fixture.sha), client)
@@ -117,22 +143,35 @@ def evaluate(
         return [h.chunk.span for h in hits]
 
     def hybrid_ranges(query: str) -> list[Span]:
-        return [m.chunk.span for m in hybrid.retrieve(REPO, fixture.sha, query).matches]
+        return [s.span for s in hybrid.retrieve(REPO, fixture.sha, query).evidence()]
 
     modes: dict[str, Callable[[str], list[Span]]] = {
         "lexical": lexical_ranges,
         "vector": vector_ranges,
         "hybrid": hybrid_ranges,
     }
+    fixture_ranker = FixtureRanker()
+    if compare_rerank:
+        reranker = Reranker(fixture_ranker)
+
+        def reranked(query: str) -> list[Span]:
+            sources = hybrid.retrieve(REPO, fixture.sha, query).evidence(
+                limit=MAX_CANDIDATES, char_limit=MAX_CANDIDATES * CHUNK_CHARS
+            )
+            return [s.span for s in reranker.rank(query, sources)]
+
+        modes["reranked"] = reranked
     measurements: dict[str, dict[str, Measurement]] = {}
     for mode, retrieve in modes.items():
         measurements[mode] = {}
         for query in corpus.queries:
+            before = fixture_ranker.calls
             start = perf_counter()
             result = retrieve(query.question)
             elapsed = (perf_counter() - start) * 1000
-            measurements[mode][query.id] = measure(
-                query.expected, result, corpus.k, elapsed
+            measurements[mode][query.id] = replace(
+                measure(query.expected, result, corpus.k, elapsed),
+                rerank_calls=fixture_ranker.calls - before,
             )
     return fixture.sha, measurements
 
@@ -143,6 +182,7 @@ def regressions(
     return [
         f"{mode}/{query.id}"
         for mode, rows in results.items()
+        if mode in corpus.minimum_recall
         for query in corpus.queries
         if rows[query.id].recall < corpus.minimum_recall[mode][query.id]
     ]
@@ -157,10 +197,17 @@ def main() -> int:
         action="store_true",
         help="Fail when a query falls below its checked-in recall baseline.",
     )
+    parser.add_argument(
+        "--compare-rerank",
+        action="store_true",
+        help="Compare hybrid retrieval with a deterministic fixture reranker.",
+    )
     args = parser.parse_args()
     corpus = Corpus.model_validate_json(CORPUS.read_bytes())
     with TemporaryDirectory() as temporary:
-        sha, results = evaluate(corpus, Path(temporary))
+        sha, results = evaluate(
+            corpus, Path(temporary), compare_rerank=args.compare_rerank
+        )
     failures = regressions(results, corpus) if args.check else []
     print(
         json.dumps(
@@ -174,6 +221,7 @@ def main() -> int:
                         "recall": mean(m.recall for m in rows.values()),
                         "diversity": mean(m.diversity for m in rows.values()),
                         "mean_elapsed_ms": mean(m.elapsed_ms for m in rows.values()),
+                        "rerank_calls": sum(m.rerank_calls for m in rows.values()),
                         "queries": {key: asdict(row) for key, row in rows.items()},
                     }
                     for mode, rows in results.items()

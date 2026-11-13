@@ -23,7 +23,48 @@ CANDIDATE_LIMIT = 24
 SOURCE_LIMIT = 6
 CONTEXT_CHARS = 6000
 _STOP = frozenset(
-    ["a", "an", "and", "are", "as", "at", "be", "by", "can", "code", "defined", "do", "does", "file", "for", "from", "how", "i", "in", "is", "it", "me", "of", "on", "or", "project", "repository", "show", "that", "the", "this", "to", "us", "use", "what", "where", "which", "who", "why", "with"]
+    [
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "can",
+        "code",
+        "defined",
+        "do",
+        "does",
+        "file",
+        "for",
+        "from",
+        "how",
+        "i",
+        "in",
+        "is",
+        "it",
+        "me",
+        "of",
+        "on",
+        "or",
+        "project",
+        "repository",
+        "show",
+        "that",
+        "the",
+        "this",
+        "to",
+        "us",
+        "use",
+        "what",
+        "where",
+        "which",
+        "who",
+        "why",
+        "with",
+    ]
 )
 
 
@@ -49,9 +90,11 @@ class Retrieval:
     literal_hits: list[Hit]
     term: str
 
-    def evidence(self) -> list[Evidence]:
+    def evidence(
+        self, *, limit: int = SOURCE_LIMIT, char_limit: int = CONTEXT_CHARS
+    ) -> list[Evidence]:
         sources: dict[str, Evidence] = {}
-        remaining = CONTEXT_CHARS
+        remaining = char_limit
         for match in self.matches:
             chunk = match.chunk
             if len(chunk.text) > remaining:
@@ -60,7 +103,7 @@ class Retrieval:
             if source.id not in sources:
                 sources[source.id] = source
                 remaining -= len(chunk.text)
-            if len(sources) == SOURCE_LIMIT:
+            if len(sources) == limit:
                 break
         return list(sources.values())
 

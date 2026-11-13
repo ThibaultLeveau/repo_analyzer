@@ -866,8 +866,9 @@ def create_app(
     @lru_cache(maxsize=1)
     def questions() -> "Ask":
         from repopilot.ask import Ask
+        from repopilot.rerank import Reranker
 
-        return Ask(engine.cache, engine.store, vector_index(), model, histories, official_docs)
+        return Ask(engine.cache, engine.store, vector_index(), model, histories, official_docs, Reranker.configured())
 
     @app.post("/repos/{owner}/{repo}/{sha}/ask", dependencies=[Depends(protect)])
     def ask_question(

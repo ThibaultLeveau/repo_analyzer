@@ -20,6 +20,17 @@ documentation section** for the publisher's guidance. When a requested
 source is unavailable, the answer identifies that gap. Historical questions
 use the records loaded from the **Issues** view.
 
+Set `REPOPILOT_RERANK=1` before starting RepoPilot to enable optional model
+reranking with your configured OpenAI key. Ask sends at most 12 candidate
+IDs with up to 350 characters from each excerpt. A ranking request has an
+eight-second timeout and falls back to the existing order on failure. The
+**Observability** view records this call separately as `model.rerank`.
+
+From a development checkout, run
+`python tests/evaluate_retrieval.py --check --compare-rerank` to compare
+recall, source diversity, elapsed time and ranking calls on the pinned
+questions using a deterministic fixture reranker.
+
 In the [Catalog test fixture](https://github.com/ThibaultLeveau/repo_analyzer/blob/main/tests/journey_fixture.py),
 searching for `load_catalog` leads to its definition in `src/catalog.py`,
 lines 4–5. Line 5 calls `yaml.safe_load(source)`. Its test appears in
