@@ -10,6 +10,7 @@ from repopilot import specialists
 from repopilot.audit import Audit, Finding, analyze_audit
 from repopilot.dependencies import DependencyReport
 from repopilot.events import measure
+from repopilot.maintenance import maintenance_findings
 from repopilot.python_facts import PythonFacts
 from repopilot.snapshots import SourceSnapshot
 
@@ -122,6 +123,10 @@ def unified_audit(
     snapshot: SourceSnapshot, facts: PythonFacts, deps: DependencyReport
 ) -> Audit:
     base = analyze_audit(snapshot, facts, deps, include_style=False)
+    extra = tuple(
+        f for module in facts.modules for f in maintenance_findings(snapshot, module)
+    )
+    base = replace(base, findings=base.findings + extra)
     result = _AUDIT.invoke(
         {"snapshot": snapshot, "facts": facts, "report": base, "outcomes": []},
         config={"max_concurrency": 3},

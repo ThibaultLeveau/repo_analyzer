@@ -1,3 +1,13 @@
+{% if patch %}
+<section aria-label="Patch preview" class="panel guide">
+  <a href="{{ audit_url.include_query_params(finding=selected.key) }}">Return to finding</a>
+  <h2>{{ selected.title }}</h2><p>{{ patch.reason }}</p>
+  {% set span = selected.span %}
+  <a hx-boost="false" href="{{ explorer_url.include_query_params(path=span.path, line=span.start, end=span.end) }}#L{{ span.start }}">{{ span.path }} · L{{ span.start }}–{{ span.end }}</a>
+  {% if patch.diff %}<p>Commit <code>{{ sha }}</code></p><pre><code>{{ patch.diff }}</code></pre>
+  <a hx-boost="false" href="{{ download_url }}">Download patch</a>{% endif %}
+</section>
+{% else %}
 <p>{{ report.test_files }} conventionally named test {{ 'file' if report.test_files == 1 else 'files' }}.
   {% if report.coverage %}
     Reported line coverage: {{ report.coverage[0] }} of {{ report.coverage[1] }} executable lines
@@ -25,7 +35,10 @@
     <p>{{ selected.category }} · {{ selected.rule }} · {{ selected.severity }}</p>
     <p>{{ selected.explanation }}</p>
     <p>{{ selected.limit }}</p>
-    {% if selected.category in ['security', 'style', 'performance'] %}
+    {% if selected.rule == 'BUG001' %}
+    <a href="{{ url_for('maintenance_preview', owner=repository.split('/')[0], repo=repository.split('/')[1], sha=sha).include_query_params(finding=selected.key) }}">Preview maintenance fix</a>
+    {% endif %}
+    {% if selected.category in ['security', 'style', 'performance'] or selected.rule == 'BUG001' %}
     <form method="post" action="{{ audit_url.include_query_params(category=category, finding=selected.key) }}" hx-boost="false">
       <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="button">Explain observation</button>
     </form>{% endif %}
@@ -38,3 +51,4 @@
   </section>
   {% endif %}
 </div>
+{% endif %}
