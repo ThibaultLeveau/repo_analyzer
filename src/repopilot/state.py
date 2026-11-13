@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS guide_notes (
     repository TEXT COLLATE NOCASE, sha TEXT, model TEXT, notes TEXT NOT NULL,
     PRIMARY KEY (repository, sha, model)
 );
+CREATE TABLE IF NOT EXISTS questions (
+    id INTEGER PRIMARY KEY, repository TEXT COLLATE NOCASE NOT NULL, sha TEXT NOT NULL,
+    question TEXT NOT NULL, answer TEXT NOT NULL, citations TEXT NOT NULL
+);
 CREATE TRIGGER IF NOT EXISTS job_transition_time AFTER UPDATE OF status ON jobs
 BEGIN
     UPDATE jobs SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = NEW.id;
@@ -218,6 +222,26 @@ class StateStore:
                 "INSERT OR REPLACE INTO guide_notes VALUES (?,?,?,?)",
                 (repository, sha, model, json.dumps(notes)),
             )
+
+    def save_question(
+        self, repository: str, sha: str, question: str, answer: str, citations: list[str]
+    ) -> int:
+        with self._connection(write=True) as db:
+            row = db.execute(
+                "INSERT INTO questions(repository,sha,question,answer,citations) VALUES (?,?,?,?,?) RETURNING id",
+                (repository, sha, question, answer, json.dumps(citations)),
+            ).fetchone()
+            return int(row[0])
+
+    def question(self, repository: str, sha: str, answer_id: int) -> tuple[str, str]:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT question,answer FROM questions WHERE repository=? AND sha=? AND id=?",
+                (repository, sha, answer_id),
+            ).fetchone()
+        if row is None:
+            raise KeyError(answer_id)
+        return row[0], row[1]
 
     def recent_imports(self) -> list[Job]:
         with self._connection() as db:

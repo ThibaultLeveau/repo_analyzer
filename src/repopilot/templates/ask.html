@@ -1,0 +1,35 @@
+<section class="panel ask-pane" id="ask" aria-labelledby="ask-heading">
+  <h2 id="ask-heading">Ask about this code</h2>
+  <form method="post" action="{{ ask_url }}" hx-post="{{ ask_url }}" hx-indicator="#ask-loading" hx-disabled-elt="find button">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="path" value="{{ path }}">
+    <label for="ask-question">Question about this commit</label>
+    <textarea id="ask-question" name="question" required maxlength="1000" rows="2">{{ saved[0] if saved else '' }}</textarea>
+    <button class="button" type="submit">Ask</button>
+    <span class="htmx-indicator" id="ask-loading" role="status">Searching source…</span>
+  </form>
+  {% if saved %}
+  {% set answer = saved[1] %}
+  {% if answer.status == "ok" %}
+    <h3>Answer</h3>
+    {% for claim in answer.claims %}
+      <p>{{ claim.text }}</p>
+      {% for source in claim.sources %}
+      <details class="answer-source" open>
+        <summary>{{ source.span.path }} · L{{ source.span.start }}–{{ source.span.end }}</summary>
+        <pre><code>{{ source.excerpt }}</code></pre>
+        <a hx-boost="false" href="{{ source.url }}">Open cited lines</a>
+      </details>
+      {% endfor %}
+    {% endfor %}
+  {% else %}
+    <p role="status">{{ {
+      "insufficient_evidence": "Insufficient evidence in this commit to answer the question.",
+      "missing_key": "Set OPENAI_API_KEY to generate an answer.",
+      "invalid_response": "The model returned an answer with invalid structure or citations.",
+      "timeout": "The model timed out. Try again.",
+      "provider_error": "The model is unavailable. Try again."
+    }[answer.status] }}</p>
+  {% endif %}
+  {% endif %}
+</section>
