@@ -63,6 +63,11 @@ button { border: 0; cursor: pointer; font: inherit; }
 [role="alert"] { color: #ffb8a8; }
 .explorer { display: grid; grid-template-columns: minmax(11rem, 28%) minmax(0, 1fr); gap: 1rem; }
 .file-tree, .source-pane { min-width: 0; padding: 1rem; align-self: start; }
+.ask-pane { grid-column: 2; min-width: 0; padding: 1rem; overflow-wrap: anywhere; }
+.ask-pane textarea { display: block; width: 100%; resize: vertical; padding: .6rem; margin-bottom: .6rem; background: var(--bg); color: var(--text); border: 1px solid var(--line); font: inherit; }
+.ask-pane .htmx-indicator { display: none; color: var(--muted); }
+.ask-pane .htmx-indicator.htmx-request { display: inline; }
+.answer-source { border-top: 1px solid var(--line); padding-block: .5rem; }
 .file-tree { max-height: 75vh; overflow: auto; }
 .file-tree h2, .breadcrumb { font-size: 1rem; margin-bottom: 1rem; }
 .file-tree ul { list-style: none; padding-left: .85rem; margin: 0; }
@@ -98,6 +103,7 @@ pre, code, kbd { font-family: "Cascadia Code", Consolas, monospace; }
 pre { max-width: 100%; overflow-x: auto; padding: 1rem; background: var(--bg); border: 1px solid var(--line); border-radius: .35rem; color: var(--accent); }
 @media (max-width: 46rem) {
   .explorer { grid-template-columns: minmax(0, 1fr); }
+  .ask-pane { grid-column: 1; }
   .file-tree { max-height: 14rem; }
   .topbar { padding-inline: 1rem; gap: .8rem; flex-wrap: wrap; }
   .repo-context { padding-left: .8rem; }

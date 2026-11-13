@@ -25,6 +25,7 @@ from repopilot.snapshots import SnapshotError
 from repopilot.state import Job, JobStateError
 
 if TYPE_CHECKING:
+    from repopilot.ask import Ask
     from repopilot.vectors import Embedder, VectorIndex
 
 
@@ -340,6 +341,35 @@ def create_app(
             error=error,
         )
 
+    @lru_cache(maxsize=1)
+    def questions() -> "Ask":
+        from repopilot.ask import Ask
+
+        return Ask(engine.cache, engine.store, vector_index(), model)
+
+    @app.post("/repos/{owner}/{repo}/{sha}/ask", dependencies=[Depends(protect)])
+    def ask_question(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        question: Annotated[str, Form()],
+        path: Annotated[str, Form()] = "",
+    ) -> Response:
+        try:
+            answer_id = questions().run(f"{owner}/{repo}", sha, question, path)
+        except (FileNotFoundError, SnapshotError, GitHubError) as exc:
+            raise HTTPException(404, "Snapshot not found") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        url = request.url_for("explorer", owner=owner, repo=repo, sha=sha)
+        location = (
+            str(url.include_query_params(path=path, answer_id=answer_id)) + "#ask"
+        )
+        if request.headers.get("HX-Request") == "true":
+            return Response(headers={"HX-Redirect": location})
+        return RedirectResponse(location, status_code=303)
+
     @app.get("/repos/{owner}/{repo}/{sha}/code", response_class=HTMLResponse)
     def explorer(
         request: Request,
@@ -349,6 +379,7 @@ def create_app(
         path: str = "",
         line: int | None = None,
         end: int | None = None,
+        answer_id: int | None = None,
     ) -> HTMLResponse:
         repository = f"{owner}/{repo}"
         url = request.url_for("explorer", owner=owner, repo=repo, sha=sha)
@@ -376,10 +407,18 @@ def create_app(
                 explorer_url=url,
                 status_code=422,
             )
+        saved = None
+        if answer_id is not None:
+            try:
+                saved = questions().saved(repository, sha, answer_id)
+            except KeyError as exc:
+                raise HTTPException(404, "Answer not found in this snapshot") from exc
         return page(
             request,
             "Code Explorer",
             repository=repository,
+            saved=saved,
+            ask_url=request.url_for("ask_question", owner=owner, repo=repo, sha=sha),
             sha=sha,
             explorer_url=url,
             view=view,
