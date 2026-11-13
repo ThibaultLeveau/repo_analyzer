@@ -2,6 +2,13 @@
 <a href="{{ source.url }}" hx-boost="false">{{ source.span.path }} · L{{ source.span.start }}{% if source.span.end != source.span.start %}–{{ source.span.end }}{% endif %}</a>
 {%- endmacro %}
 <div class="form-row guide-actions">
+  <form action="{{ translate_url }}" method="post" hx-boost="false">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label for="guide-language">Guide language</label>
+    <select id="guide-language" name="language"><option value="en">English</option>
+      {% for code, label in available_languages.items() %}<option value="{{ code }}"{% if language == code %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select><button class="button">Show guide</button>
+  </form>
   <a class="button" href="{{ download_url }}" download hx-boost="false">Download Markdown</a>
   <form action="{{ generate_url }}" method="post" hx-boost="false">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -9,13 +16,15 @@
   </form>
 </div>
 {% include "user_notes.html" %}
+{% if translation_notice %}<p role="status">{{ translation_notice }}</p>{% endif %}
 {% if notice == "ok" %}<p role="status">Cited notes saved for this commit.</p>
 {% elif notice == "missing_key" %}<p role="status">Set OPENAI_API_KEY to generate notes. The source-based guide is available below.</p>
 {% elif notice %}<p role="status">No new cited notes were available. The source-based guide is available below.</p>{% endif %}
+{% macro guide_body(content, prefix) %}
 <div class="onboarding">
-  {% for section in guide.sections %}
-  <section class="panel guide" aria-labelledby="section-{{ loop.index }}">
-    <h2 id="section-{{ loop.index }}">{{ section.title }}</h2>
+  {% for section in content.sections %}
+  <section class="panel guide" aria-labelledby="{{ prefix }}section-{{ loop.index }}">
+    <h2 id="{{ prefix }}section-{{ loop.index }}">{{ section.title }}</h2>
     {% for note in section.notes %}
       <p>{{ note.text }} {% for source in note.sources %}{{ source_link(source) }} {% endfor %}</p>
     {% endfor %}
@@ -39,8 +48,14 @@
   </section>
   {% endfor %}
 </div>
+{% endmacro %}
+{% if translated %}
+<h2>{{ available_languages[language] }} guide</h2>
+<div lang="{{ language }}">{{ guide_body(translated, 'translated-') }}</div>
+<details><summary>Original English guide</summary>{{ guide_body(guide, 'original-') }}</details>
+{% else %}{{ guide_body(guide, '') }}{% endif %}
 <script>
-  document.querySelector(".onboarding").onclick = async (event) => {
+  document.querySelectorAll(".onboarding").forEach(panel => { panel.onclick = async (event) => {
     const button = event.target.closest(".copy-command");
     if (!button) return;
     try {
@@ -49,5 +64,5 @@
     } catch {
       button.textContent = "Copy failed — select the command";
     }
-  };
+  }; });
 </script>

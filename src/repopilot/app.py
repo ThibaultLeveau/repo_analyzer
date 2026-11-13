@@ -44,6 +44,7 @@ from repopilot.search import QUERY_LIMIT
 from repopilot.snapshots import SnapshotError
 from repopilot.specialists import explain as explain_findings
 from repopilot.state import Job, JobStateError
+from repopilot.translation import LANGUAGES, TranslationError, Translations
 from repopilot.user_notes import MAX_BYTES, NoteError, Notes, RevisionConflict
 
 if TYPE_CHECKING:
@@ -69,6 +70,7 @@ def create_app(
     histories: History
     official_docs: OfficialDocs
     notes: Notes
+    translations: Translations
     scores: Scores
     sampler: ResourceSampler
     csrf = secrets.token_urlsafe(32)
@@ -76,7 +78,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nonlocal engine, architecture, guides, issue_pages, scores, sampler, histories
-        nonlocal official_docs, notes
+        nonlocal official_docs, notes, translations
         with import_service(
             directory, transport=transport, model=model, embedder=embedder, clock=clock
         ) as engine:
@@ -86,6 +88,7 @@ def create_app(
             histories = History(directory, engine.client, clock)
             official_docs = OfficialDocs(directory, clock)
             notes = Notes(directory, clock)
+            translations = Translations(directory)
             scores = Scores(directory)
             sampler = ResourceSampler(directory, clock)
             stop = threading.Event()
@@ -877,9 +880,18 @@ def create_app(
         notice: str = "",
         note: str = "",
         revision: str = "",
+        language: str = "",
+        translation_notice: str = "",
     ) -> HTMLResponse:
         guide = snapshot_guide(owner, repo, sha)
         paths = {"owner": owner, "repo": repo, "sha": sha}
+        if language and language not in LANGUAGES:
+            raise HTTPException(422, "Select a supported guide language.")
+        translated = (
+            translations.get(guide, language, architecture.model_name)
+            if language
+            else None
+        )
         project_notes = notes.for_project(guide.repository)
         try:
             preview = notes.read(guide.repository, note, revision) if note else None
@@ -891,6 +903,11 @@ def create_app(
             repository=guide.repository,
             sha=sha,
             guide=guide,
+            translated=translated,
+            language=language,
+            available_languages=LANGUAGES,
+            translation_notice=translation_notice,
+            translate_url=request.url_for("translate_guide", **paths),
             project_notes=project_notes,
             preview=preview,
             current_note=next((n for n in project_notes if n.id == note), None),
@@ -898,8 +915,47 @@ def create_app(
             remove_action=request.url_for("remove_attachment", **paths),
             notice=notice,
             explorer_url=request.url_for("explorer", **paths),
-            download_url=request.url_for("download_guide", **paths),
+            download_url=request.url_for(
+                "download_guide", **paths
+            ).include_query_params(language=language)
+            if translated
+            else request.url_for("download_guide", **paths),
             generate_url=request.url_for("generate_guide", **paths),
+        )
+
+    @app.post(guide_path + "/translate", dependencies=[Depends(protect)])
+    def translate_guide(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        language: Annotated[str, Form()],
+    ) -> Response:
+        guide = snapshot_guide(owner, repo, sha)
+        url = request.url_for("getting_started", owner=owner, repo=repo, sha=sha)
+        if language == "en":
+            return RedirectResponse(str(url), status_code=303)
+        if language not in LANGUAGES:
+            raise HTTPException(422, "Select a supported guide language.")
+        snapshot = engine.cache.open(guide.repository, sha)
+        facts = architecture.artifacts.python(snapshot)
+        names = {s.name.rsplit(".", 1)[-1] for m in facts.modules for s in m.symbols}
+        names.update(m.name for m in facts.modules)
+        notice = ""
+        try:
+            translations.get(
+                guide,
+                language,
+                architecture.model_name,
+                generate=True,
+                model=model,
+                identifiers=names,
+            )
+        except TranslationError as exc:
+            notice = str(exc)
+        return RedirectResponse(
+            str(url.include_query_params(language=language, translation_notice=notice)),
+            status_code=303,
         )
 
     @app.post(guide_path + "/attachments", dependencies=[Depends(protect)])
@@ -981,12 +1037,18 @@ def create_app(
         )
 
     @app.get(guide_path + ".md")
-    def download_guide(owner: str, repo: str, sha: str) -> Response:
+    def download_guide(owner: str, repo: str, sha: str, language: str = "") -> Response:
+        guide = snapshot_guide(owner, repo, sha)
+        if language:
+            translated = translations.get(guide, language, architecture.model_name) if language in LANGUAGES else None
+            if translated is None:
+                raise HTTPException(404, "Guide translation unavailable")
+            guide = translated
         return Response(
-            snapshot_guide(owner, repo, sha).markdown(),
+            guide.markdown(),
             media_type="text/markdown",
             headers={
-                "Content-Disposition": 'attachment; filename="getting-started.md"'
+                "Content-Disposition": 'attachment; filename="getting-started' + ("-" + language if language else "") + '.md"'
             },
         )
 
