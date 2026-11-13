@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from functools import lru_cache
 
+from repopilot.events import measure
 from repopilot.grounding import Evidence
 from repopilot.search import (
     CHUNK_CHARS,
@@ -87,6 +88,7 @@ class HybridRetriever:
     def _index(self, repo: str, sha: str) -> LexicalSearch:
         return LexicalSearch(self.cache.open(repo, sha))
 
+    @measure("retrieval.search")
     def retrieve(
         self, repo: str, sha: str, query: str, selected: str = ""
     ) -> Retrieval:

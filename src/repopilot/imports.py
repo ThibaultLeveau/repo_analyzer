@@ -1,5 +1,6 @@
 import logging
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
@@ -11,6 +12,7 @@ from langgraph.graph import END, START, StateGraph
 
 from repopilot.architecture import Architecture
 from repopilot.artifacts import Artifacts
+from repopilot.events import EventStore, measure
 from repopilot.github import GitHubError, repository_name, resolve_repository
 from repopilot.grounding import StructuredModel
 from repopilot.models import RepositoryHead
@@ -39,11 +41,13 @@ class ImportService:
         model: StructuredModel | None = None,
         embedder: "Embedder | None" = None,
         artifacts: Artifacts | None = None,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         self.store = store
         self.cache = cache
         self.client = client
         self.workers = workers
+        self.events = EventStore(store.path.parent, clock)
         self.architecture = Architecture(cache, store, model, artifacts)
         self.embedder = embedder
         graph = StateGraph(ImportState)
@@ -68,11 +72,20 @@ class ImportService:
             raise JobStateError("Only failed imports can be retried")
         head, _ = self.store.source(job.id)
         refresh = self.store.refresh_info(job_id)
-        return self._schedule(
-            refresh.previous_repo if refresh else job.repository,
-            head,
-            previous_sha=refresh.previous_sha if refresh else None,
-        )
+        with (
+            self.events.scope(
+                head.full_name if head else job.repository,
+                head.sha if head else None,
+                job.id,
+            ),
+            measure("import.retry") as metrics,
+        ):
+            metrics.retries = 1
+            return self._schedule(
+                refresh.previous_repo if refresh else job.repository,
+                head,
+                previous_sha=refresh.previous_sha if refresh else None,
+            )
 
     def refresh(self, name: str, sha: str) -> Job:
         self.cache.open(name, sha)
@@ -96,37 +109,54 @@ class ImportService:
             self.graph.invoke({"job_id": job_id})
         except (GitHubError, SnapshotError) as exc:
             self.store.fail(job_id, str(exc))
-        except Exception:
-            log.exception("Import job %d failed", job_id)
+        except Exception:  # noqa: BLE001 - the job must terminate without logging source text
+            log.error("Import job %d failed", job_id)
             self.store.fail(job_id, "Import failed while processing the repository")
 
     def _resolve(self, state: ImportState) -> dict[str, RepositoryHead]:
         job = self.store.job(state["job_id"])
         head, _ = self.store.source(job.id)
-        if head is None:
-            head = resolve_repository(
-                f"https://github.com/{job.repository}", self.client
-            )
-            self.store.pin(job.id, head)
+        with (
+            self.events.scope(
+                head.full_name if head else job.repository,
+                head.sha if head else None,
+                job.id,
+            ),
+            measure("import.resolve"),
+        ):
+            if head is None:
+                head = resolve_repository(
+                    f"https://github.com/{job.repository}", self.client
+                )
+                self.store.pin(job.id, head)
         return {"head": head}
 
     def _fetch(self, state: ImportState) -> None:
-        self.cache.fetch(state["head"], self.client)
-        self.store.mark_fetched(state["job_id"])
+        head, job_id = state["head"], state["job_id"]
+        with (
+            self.events.scope(head.full_name, head.sha, job_id),
+            measure("import.fetch"),
+        ):
+            self.cache.fetch(head, self.client)
+            self.store.mark_fetched(job_id)
 
     def _publish(self, state: ImportState) -> None:
         job_id, head = state["job_id"], state["head"]
-        info = self.store.refresh_info(job_id)
-        manifest = None
-        if info:
-            from repopilot.refresh import Refresh
-            from repopilot.vectors import VectorIndex
+        with (
+            self.events.scope(head.full_name, head.sha, job_id),
+            measure("import.publish"),
+        ):
+            info = self.store.refresh_info(job_id)
+            manifest = None
+            if info:
+                from repopilot.refresh import Refresh
+                from repopilot.vectors import VectorIndex
 
-            vectors = VectorIndex(self.store.path.parent, self.cache, self.embedder)
-            manifest = Refresh(self.architecture, vectors).prepare(
-                head, info.previous_repo, info.previous_sha
-            )
-        self.store.complete(job_id, head.sha, manifest=manifest)
+                vectors = VectorIndex(self.store.path.parent, self.cache, self.embedder)
+                manifest = Refresh(self.architecture, vectors).prepare(
+                    head, info.previous_repo, info.previous_sha
+                )
+            self.store.complete(job_id, head.sha, manifest=manifest)
 
 
 @contextmanager
@@ -137,6 +167,7 @@ def import_service(
     model: StructuredModel | None = None,
     embedder: "Embedder | None" = None,
     artifacts: Artifacts | None = None,
+    clock: Callable[[], float] = time.time,
 ) -> Iterator[ImportService]:
     data_dir.mkdir(parents=True, exist_ok=True)
     # Only the worker that owns this directory may recover interrupted jobs.
@@ -154,6 +185,7 @@ def import_service(
             model=model,
             embedder=embedder,
             artifacts=artifacts,
+            clock=clock,
         )
         for job_id in store.recover_interrupted():
             workers.submit(service.run, job_id)

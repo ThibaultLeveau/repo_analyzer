@@ -1,16 +1,17 @@
 import os
 import secrets
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 import httpx2
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -18,6 +19,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from repopilot.architecture import GROUP_SIZE, Architecture, PackageTree
 from repopilot.dependencies import DependencyReport
 from repopilot.dependency_history import dependency_history
+from repopilot.events import measure
 from repopilot.explorer import PAGE_LINES, browse
 from repopilot.github import GitHubError, RateLimited
 from repopilot.grounding import StructuredModel, grounded_answer
@@ -60,7 +62,7 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nonlocal engine, architecture, guides, issue_pages, scores
         with import_service(
-            directory, transport=transport, model=model, embedder=embedder
+            directory, transport=transport, model=model, embedder=embedder, clock=clock
         ) as engine:
             architecture = engine.architecture
             guides = Guides(architecture)
@@ -68,7 +70,45 @@ def create_app(
             scores = Scores(directory)
             yield
 
+    class ActionRoute(APIRoute):
+        def get_route_handler(
+            self,
+        ) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+            handler = super().get_route_handler()
+
+            async def observed(request: Request) -> Response:
+                if self.name == "health":
+                    return await handler(request)
+                params = request.path_params
+                repository = sha = job_id = None
+                if "sha" in params:
+                    name = f"{params['owner']}/{params['repo']}"
+                    try:
+                        engine.cache.open(name, params["sha"])
+                    except (FileNotFoundError, SnapshotError, GitHubError):
+                        pass
+                    else:
+                        repository, sha = name, params["sha"]
+                elif "job_id" in params:
+                    try:
+                        job = engine.store.job(int(params["job_id"]))
+                        head, _ = engine.store.source(job.id)
+                        repository = head.full_name if head else job.repository
+                        job_id, sha = job.id, head.sha if head else None
+                    except (ValueError, KeyError, OverflowError):
+                        pass
+                with (
+                    engine.events.scope(repository, sha, job_id),
+                    measure("web." + self.name) as metrics,
+                ):
+                    response = await handler(request)
+                    metrics.success = response.status_code < 400
+                    return response
+
+            return observed
+
     app = FastAPI(title="RepoPilot", lifespan=lifespan)
+    app.router.route_class = ActionRoute
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=["127.0.0.1", "localhost", "[::1]"],
