@@ -89,7 +89,10 @@ class EventStore:
         return rows
 
     def totals(self, repository: str | None = None, since: float = 0) -> Totals:
-        events = self.recent(repository, since)
+        return self.summarize(self.recent(repository, since))
+
+    @staticmethod
+    def summarize(events: list[AnalysisEvent]) -> Totals:
         metrics = [e.metrics for e in events]
         known = [m.tokens for m in metrics if m.tokens is not None]
         return Totals(

@@ -19,6 +19,7 @@ dependencies = [
     "markdown-it-py>=3,<5",
     "openai>=2,<4",
     "packaging>=24",
+    "psutil>=6,<8",
     "python-multipart>=0.0.20,<1",
     "PyYAML>=6,<7",
     "tree-sitter>=0.25,<0.27",
@@ -38,6 +39,7 @@ dev = [
     "ruff>=0.11,<1",
     "setuptools>=77",
     "types-PyYAML>=6,<7",
+    "types-psutil>=6,<8",
     "starlette>=1.10,<2",
 ]
 

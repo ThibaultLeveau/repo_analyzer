@@ -1,12 +1,13 @@
 import os
 import secrets
+import threading
 import time
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import httpx2
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -30,6 +31,7 @@ from repopilot.module_graph import arrow
 from repopilot.patches import dependency_fix
 from repopilot.references import ReferenceIndex
 from repopilot.reports import MEDIA_TYPES, Format, build_report
+from repopilot.resources import ResourceSampler
 from repopilot.scoring import RUBRIC, Scores, assess, easier_first, issue_revision
 from repopilot.search import QUERY_LIMIT
 from repopilot.snapshots import SnapshotError
@@ -56,11 +58,12 @@ def create_app(
     guides: Guides
     issue_pages: IssuePages
     scores: Scores
+    sampler: ResourceSampler
     csrf = secrets.token_urlsafe(32)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        nonlocal engine, architecture, guides, issue_pages, scores
+        nonlocal engine, architecture, guides, issue_pages, scores, sampler
         with import_service(
             directory, transport=transport, model=model, embedder=embedder, clock=clock
         ) as engine:
@@ -68,7 +71,17 @@ def create_app(
             guides = Guides(architecture)
             issue_pages = IssuePages(directory, engine.client, clock)
             scores = Scores(directory)
-            yield
+            sampler = ResourceSampler(directory, clock)
+            stop = threading.Event()
+            worker = threading.Thread(
+                target=sampler.run, args=(stop,), name="resource-sampler"
+            )
+            worker.start()
+            try:
+                yield
+            finally:
+                stop.set()
+                worker.join()
 
     class ActionRoute(APIRoute):
         def get_route_handler(
@@ -117,6 +130,9 @@ def create_app(
     resources = Path(__file__).parent
     app.mount("/static", StaticFiles(directory=resources / "static"), name="static")
     templates = Jinja2Templates(directory=resources / "templates")
+    templates.env.filters["utc"] = lambda value: datetime.fromtimestamp(
+        value, UTC
+    ).strftime("%Y-%m-%d %H:%M:%S")
 
     def page(
         request: Request, title: str, *, status_code: int = 200, **context: object
@@ -237,13 +253,38 @@ def create_app(
             },
         )
 
-    def issue_repo(owner: str, repo: str, sha: str) -> str:
+    def snapshot_repository(owner: str, repo: str, sha: str) -> str:
         repository = f"{owner}/{repo}"
         try:
             engine.cache.open(repository, sha)
         except (FileNotFoundError, SnapshotError, GitHubError) as exc:
             raise HTTPException(404, "Snapshot not found") from exc
         return repository
+
+    @app.get("/repos/{owner}/{repo}/{sha}/observability", response_class=HTMLResponse)
+    def observability(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        window: Literal["1h", "24h", "7d"] = "1h",
+    ) -> HTMLResponse:
+        repository = snapshot_repository(owner, repo, sha)
+        since = clock() - {"1h": 3600, "24h": 86400, "7d": 604800}[window]
+        events = engine.events.recent(repository, since)
+        jobs = engine.store.recent_imports(repository)
+        return page(
+            request,
+            "Observability",
+            repository=repository,
+            sha=sha,
+            explorer_url=request.url_for("explorer", owner=owner, repo=repo, sha=sha),
+            window=window,
+            totals=engine.events.summarize(events),
+            jobs=jobs,
+            job_events={j.id: [e for e in events if e.job_id == j.id] for j in jobs},
+            samples=sampler.history(since),
+        )
 
     def issue_page(
         request: Request,
@@ -258,7 +299,7 @@ def create_app(
         sort: str = "",
         revision: int | None = None,
     ) -> HTMLResponse:
-        repository = issue_repo(owner, repo, sha)
+        repository = snapshot_repository(owner, repo, sha)
         queue = issue_pages.read(repository)
         results = scores.current(repository, sha, queue.issues)
         items = [
@@ -373,7 +414,7 @@ def create_app(
         sha: str,
         number: Annotated[int, Form()],
     ) -> Response:
-        repository = issue_repo(owner, repo, sha)
+        repository = snapshot_repository(owner, repo, sha)
         issue = next(
             (i for i in issue_pages.read(repository).issues if i.number == number), None
         )
@@ -410,7 +451,7 @@ def create_app(
         sha: str,
         action: Annotated[Action, Form()],
     ) -> Response:
-        repository = issue_repo(owner, repo, sha)
+        repository = snapshot_repository(owner, repo, sha)
         try:
             issue_pages.load(repository, action)
         except (QueueBusy, Cooldown) as exc:
@@ -438,7 +479,7 @@ def create_app(
         sha: str,
         hours: Annotated[str, Form(max_length=32)],
     ) -> Response:
-        repository = issue_repo(owner, repo, sha)
+        repository = snapshot_repository(owner, repo, sha)
         try:
             issue_pages.set_interval(repository, float(hours))
         except ValueError:
