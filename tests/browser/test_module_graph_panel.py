@@ -16,6 +16,7 @@ def test_follow_import_with_the_keyboard_and_open_pinned_source(
     page.goto(base + "/architecture")
     tree = page.get_by_role("complementary", name="Package tree")
     tree.get_by_role("link", name="a.py").press("Enter")
+    expect(page).to_have_url(base + "/architecture?path=a.py")
     panel = page.get_by_role("region", name="Module relationships")
     expect(panel.get_by_role("img")).to_be_visible()
     page.add_style_tag(content=".graph-canvas { display: none; }")
