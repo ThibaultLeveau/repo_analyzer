@@ -7,24 +7,34 @@
   Test execution status is unknown.
   {% if report.skipped_modules %}Skipped {{ report.skipped_modules }} unreadable or invalid Python {{ 'module' if report.skipped_modules == 1 else 'modules' }}.{% endif %}
 </p>
+{% if report.failed_specialists %}<p role="status">Partial audit. Unavailable specialists: {{ report.failed_specialists|join(', ') }}. Reopen the audit to retry.</p>{% endif %}
 <div class="issue-columns">
   <section class="panel guide" aria-label="Static findings">
     <h2>Static findings</h2>
-    <ul>{% for item in report.findings %}<li>
-      <a href="{{ audit_url.include_query_params(finding=item.key) }}"{% if item == selected %} aria-current="page"{% endif %}>{{ item.title }}</a>
-      <small>{{ item.rule }} · {{ item.severity }} · {{ item.span.path }}:{{ item.span.start }}</small>
-    </li>{% else %}<li>No findings from the available static checks.</li>{% endfor %}</ul>
+    <nav aria-label="Finding categories"><a href="{{ audit_url }}"{% if not category %} aria-current="page"{% endif %}>All</a>
+      {% for name in categories %} · <a href="{{ audit_url.include_query_params(category=name) }}"{% if category == name %} aria-current="page"{% endif %}>{{ name|capitalize }}</a>{% endfor %}
+    </nav>
+    <ul>{% for item in findings %}<li>
+      <a href="{{ audit_url.include_query_params(category=category, finding=item.key) }}"{% if selected and item.key == selected.key %} aria-current="page"{% endif %}>{{ item.title }}</a>
+      <small>{{ item.category }} · {{ item.rule }} · {{ item.severity }} · {{ item.span.path }}:{{ item.span.start }}</small>
+    </li>{% else %}<li>No findings from the available static checks{% if category %} in this category{% endif %}.</li>{% endfor %}</ul>
   </section>
   {% if selected %}
   <section class="panel guide issue-detail" aria-label="Annotated source">
     <h2>{{ selected.title }}</h2>
-    <p>{{ selected.rule }} · {{ selected.severity }}</p>
+    <p>{{ selected.category }} · {{ selected.rule }} · {{ selected.severity }}</p>
     <p>{{ selected.explanation }}</p>
     <p>{{ selected.limit }}</p>
+    {% if selected.category in ['security', 'style', 'performance'] %}
+    <form method="post" action="{{ audit_url.include_query_params(category=category, finding=selected.key) }}" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="button">Explain observation</button>
+    </form>{% endif %}
+    {% if selected.model_note %}<p><strong>Model explanation</strong> {{ selected.model_note }}</p>
+    {% elif explained %}<p role="status">Model explanation unavailable.</p>{% endif %}
     {% if selected.distribution %}<p><a href="{{ url_for('dependencies', owner=repository.split('/')[0], repo=repository.split('/')[1], sha=sha).include_query_params(package=selected.distribution, preview='true') }}">Preview dependency fix</a></p>{% endif %}
     {% set span = selected.span %}
     <a hx-boost="false" href="{{ explorer_url.include_query_params(path=span.path, line=span.start, end=span.end) }}#L{{ span.start }}">{{ span.path }} · L{{ span.start }}–{{ span.end }}</a>
-    <pre><code>{% for line in excerpt %}{{ span.start + loop.index0 }}  {{ line }}{% if not loop.last %}{{ '\n' }}{% endif %}{% endfor %}</code></pre>
+    {% if excerpt %}<pre><code>{% for line in excerpt %}{{ span.start + loop.index0 }}  {{ line }}{% if not loop.last %}{{ '\n' }}{% endif %}{% endfor %}</code></pre>{% endif %}
   </section>
   {% endif %}
 </div>

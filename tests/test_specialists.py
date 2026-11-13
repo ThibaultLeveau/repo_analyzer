@@ -1,11 +1,16 @@
 import json
+from dataclasses import replace
+from itertools import permutations
 from pathlib import Path
 
 from langchain_core.messages import BaseMessage
 from test_grounding import FakeModel
 from test_manifests import manifest_snapshot
 
+from repopilot.audit import Audit, Finding
+from repopilot.audit_graph import Outcome, combine
 from repopilot.languages import analyze_snapshot
+from repopilot.python_facts import Span
 from repopilot.specialists import explain, parsed_modules, performance, security, style
 
 
@@ -68,6 +73,7 @@ open({str(marker)!r}, 'w').close()
     ]
     assert all(f.span.path == "sample.py" and f.limit for f in findings)
     assert not marker.exists()
+
     assert not security([]) and not performance([])
     model = ExplainModel()
     enriched = explain(findings, "owner/repo", "a" * 40, model)
@@ -85,3 +91,36 @@ open({str(marker)!r}, 'w').close()
         == findings
     )
     assert not marker.exists()
+
+
+def test_merge_overlapping_evidence_in_every_completion_order() -> None:
+    base = Audit((), 0, 0, None)
+    observation = Finding(
+        "SEC001",
+        "warning",
+        "Logging",
+        "Observed",
+        "Unknown",
+        Span("main.py", 2, 4),
+        category="security",
+    )
+    style_item = replace(
+        observation, rule="STYLE001", category="style", severity="info"
+    )
+    outcomes = [
+        Outcome(
+            "security", (observation, replace(observation, span=Span("main.py", 4, 5)))
+        ),
+        Outcome("performance", failed=True),
+        Outcome("style", (style_item,)),
+    ]
+    expected = replace(
+        base,
+        findings=(replace(observation, span=Span("main.py", 2, 5)), style_item),
+        failed_specialists=("performance",),
+    )
+    assert all(combine(base, order) == expected for order in permutations(outcomes))
+    assert (
+        combine(base, [Outcome("security"), Outcome("style"), Outcome("performance")])
+        == base
+    )

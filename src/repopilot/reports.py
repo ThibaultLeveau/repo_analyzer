@@ -34,6 +34,13 @@ class Entry:
     timestamp: str | None = None
 
 
+@dataclass(frozen=True, kw_only=True)
+class AuditEntry(Entry):
+    category: str
+    severity: str
+    rule: str
+
+
 @dataclass(frozen=True)
 class Report:
     repository: str
@@ -143,16 +150,23 @@ def build_report(
     report.sections["Dependencies"] = dependencies if deps else None
     report.sections["Quality audit"] = (
         [
-            Entry(
+            AuditEntry(
                 f.title,
-                f"{f.rule} · {f.severity}. {f.explanation} {f.limit}",
+                f"{f.category} · {f.rule} · {f.severity}. {f.explanation} {f.limit}",
                 (cite(f.span),),
+                category=f.category,
+                severity=f.severity,
+                rule=f.rule,
             )
             for f in audit.findings
         ]
         if audit
         else None
     )
+    if audit and audit.failed_specialists:
+        report.sections["Audit status"] = [
+            Entry("Partial audit", "Unavailable specialists: " + ", ".join(audit.failed_specialists))
+        ]
     onboarding: list[Entry] = []
     if setup:
         guides = Guides(architecture)
