@@ -11,5 +11,15 @@
 <body>
   <a class="skip" href="#content">Skip to content</a>
   {% include "workspace.html" %}
+  <script>
+    document.addEventListener("keydown", event => {
+      const field = document.querySelector(".header-search input[type=search]");
+      if (field && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        field.focus();
+        field.select();
+      }
+    });
+  </script>
 </body>
 </html>

@@ -38,6 +38,11 @@ a:focus-visible, main:focus-visible { outline: 2px solid var(--accent); outline-
 .brand { display: inline-flex; align-items: center; gap: .65rem; font-size: 1.24rem; font-weight: 680; color: var(--text); }
 .mark { font: 700 2.2rem/1 monospace; color: var(--accent); }
 .repo-context { padding-left: 1.5rem; border-left: 1px solid var(--line); color: var(--muted); font-size: .87rem; }
+.repo-switcher { position: relative; max-width: 100%; font-size: .88rem; }
+.repo-switcher summary { cursor: pointer; overflow-wrap: anywhere; }
+.repo-switcher ul { position: absolute; z-index: 3; top: 100%; left: 0; margin: .4rem 0; padding: .4rem; list-style: none; width: min(24rem, 82vw); max-height: 50vh; overflow: auto; border: 1px solid var(--line); background: var(--panel); }
+.repo-switcher a { display: block; padding: .45rem; overflow-wrap: anywhere; }
+.repo-switcher a[aria-current] { background: var(--bg); }
 .header-search { margin-left: auto; display: flex; gap: .4rem; max-width: 100%; }
 .header-search input, .header-search button { padding: .4rem .65rem; background: var(--bg); border: 1px solid var(--line); border-radius: .3rem; color: var(--text); font: inherit; }
 .header-search input { min-width: 0; width: 15rem; }
