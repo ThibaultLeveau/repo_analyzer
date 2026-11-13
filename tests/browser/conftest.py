@@ -10,6 +10,7 @@ import uvicorn
 
 from repopilot.app import create_app
 from repopilot.grounding import StructuredModel
+from repopilot.vectors import Embedder
 
 
 @pytest.fixture
@@ -28,12 +29,18 @@ def app_clock() -> Callable[[], float]:
 
 
 @pytest.fixture
+def embedder() -> Embedder | None:
+    return None
+
+
+@pytest.fixture
 def app_url(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     import_transport: httpx2.BaseTransport | None,
     chat_model: StructuredModel | None,
     app_clock: Callable[[], float],
+    embedder: Embedder | None,
 ) -> Iterator[str]:
     monkeypatch.setenv("REPOPILOT_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -43,7 +50,10 @@ def app_url(
         server = uvicorn.Server(
             uvicorn.Config(
                 create_app(
-                    transport=import_transport, model=chat_model, clock=app_clock
+                    transport=import_transport,
+                    model=chat_model,
+                    clock=app_clock,
+                    embedder=embedder,
                 ),
                 log_level="error",
             )

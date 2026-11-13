@@ -1,0 +1,7 @@
+{
+  "module": ["catalog", "Read the catalog configuration."],
+  "dependency": ["pyyaml", "Import evidence found", "src/catalog.py", 2],
+  "installation": ["python -m pip install -r requirements.txt", "README.md", 4],
+  "issue": [7, "Document the catalog format"],
+  "answer": ["It parses the configuration with yaml.safe_load.", "src/catalog.py", 1, 5]
+}
