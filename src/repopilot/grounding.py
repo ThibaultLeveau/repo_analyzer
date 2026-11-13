@@ -12,7 +12,7 @@ from langchain_openai import ChatOpenAI
 from openai import APITimeoutError, OpenAIError
 from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 
-from repopilot.events import measure, provider_client
+from repopilot.events import Measurement, measure, provider_client
 from repopilot.python_facts import Span
 from repopilot.snapshots import SnapshotCache
 
@@ -153,6 +153,32 @@ class StructuredModel(Protocol):
     def invoke(self, input: list[BaseMessage], /) -> object: ...
 
 
+def invoke_structured(
+    messages: list[BaseMessage],
+    schema: type[BaseModel],
+    metrics: Measurement,
+    *,
+    timeout: int = 30,
+    retries: int = 1,
+) -> object:
+    with provider_client(metrics) as client:
+        chat = ChatOpenAI(
+            model=os.getenv("REPOPILOT_CHAT_MODEL") or DEFAULT_MODEL,
+            api_key=SecretStr(os.environ.get("OPENAI_API_KEY", "").strip()),
+            base_url="https://api.openai.com/v1",
+            timeout=timeout,
+            max_retries=retries,
+            http_client=client,
+        )
+        result = chat.with_structured_output(
+            schema, method="json_schema", strict=True, include_raw=True
+        ).invoke(messages)
+    message = result.get("raw") if isinstance(result, dict) else None
+    if isinstance(message, AIMessage) and message.usage_metadata:
+        metrics.tokens = message.usage_metadata["total_tokens"]
+    return result.get("parsed") if isinstance(result, dict) else None
+
+
 def _validate(raw: object, supplied: dict[str, Source]) -> Answer:
     try:
         draft = DraftAnswer.model_validate(raw)
@@ -275,22 +301,7 @@ def grounded_answer(
     try:
         with measure("model.chat") as metrics:
             if model is None:
-                with provider_client(metrics) as client:
-                    chat = ChatOpenAI(
-                        model=os.getenv("REPOPILOT_CHAT_MODEL") or DEFAULT_MODEL,
-                        api_key=SecretStr(key),
-                        base_url="https://api.openai.com/v1",
-                        timeout=30,
-                        max_retries=1,
-                        http_client=client,
-                    )
-                    raw = chat.with_structured_output(
-                        DraftAnswer, method="json_schema", strict=True, include_raw=True
-                    ).invoke(messages)
-                message = raw.get("raw") if isinstance(raw, dict) else None
-                if isinstance(message, AIMessage) and message.usage_metadata:
-                    metrics.tokens = message.usage_metadata["total_tokens"]
-                raw = raw.get("parsed") if isinstance(raw, dict) else None
+                raw = invoke_structured(messages, DraftAnswer, metrics)
             else:
                 raw = model.invoke(messages)
             result = _validate(raw, supplied)

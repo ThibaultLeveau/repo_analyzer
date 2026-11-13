@@ -49,9 +49,11 @@ class Retrieval:
     literal_hits: list[Hit]
     term: str
 
-    def evidence(self) -> list[Evidence]:
+    def evidence(
+        self, *, limit: int = SOURCE_LIMIT, char_limit: int = CONTEXT_CHARS
+    ) -> list[Evidence]:
         sources: dict[str, Evidence] = {}
-        remaining = CONTEXT_CHARS
+        remaining = char_limit
         for match in self.matches:
             chunk = match.chunk
             if len(chunk.text) > remaining:
@@ -60,7 +62,7 @@ class Retrieval:
             if source.id not in sources:
                 sources[source.id] = source
                 remaining -= len(chunk.text)
-            if len(sources) == SOURCE_LIMIT:
+            if len(sources) == limit:
                 break
         return list(sources.values())
 

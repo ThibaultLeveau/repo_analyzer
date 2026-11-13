@@ -104,15 +104,15 @@ def passage(excerpt: str, query: str) -> str:
     )
 
 
-def budget(groups: list[list[Source]]) -> list[Source]:
+def budget(groups: list[list[Source]], *, limit: int = SOURCE_LIMIT, char_limit: int = CONTEXT_CHARS) -> list[Source]:
     selected: dict[str, Source] = {}
-    remaining = CONTEXT_CHARS
+    remaining = char_limit
     for group in zip_longest(*groups):
         for item in group:
             if item is None or item.id in selected or len(item.excerpt) > remaining:
                 continue
             selected[item.id] = item
             remaining -= len(item.excerpt)
-            if len(selected) == SOURCE_LIMIT:
+            if len(selected) == limit:
                 return list(selected.values())
     return list(selected.values())
