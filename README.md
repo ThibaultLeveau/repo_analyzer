@@ -2,6 +2,25 @@
 
 RepoPilot is a local web application for understanding source repositories.
 
+## Quickstart
+
+Install Python 3.12 or later, download or clone this repository, then run
+
+```sh
+python run.py
+```
+
+Open `http://127.0.0.1:8000/` and enter a public GitHub repository URL. The
+first start installs dependencies in a private environment. Later starts reuse
+it. From another directory, pass the full quoted path to `run.py`. Use
+`--port 8010` if port 8000 is occupied.
+
+Press Ctrl+C in the terminal to stop. Run the same command to restart. By
+default, `~/.repopilot` holds `state.db` (imports and answers), `issues.db`,
+`sources/` (pinned snapshots), `chroma/` (embeddings) and `runtime/` (the
+environment for this checkout and Python version). Choose another location
+with `--data-dir "path with spaces"` or `REPOPILOT_DATA_DIR`.
+
 ## Development
 
 Use Python 3.12 or later. From the project directory, create a virtual environment.
@@ -31,6 +50,10 @@ Set `OPENAI_API_KEY` in the process environment to enable model-backed analysis.
 Set `REPOPILOT_CHAT_MODEL` to choose an OpenAI model that supports strict
 structured outputs. The default is `gpt-4o-mini`. Repository imports, browsing
 and static analysis work without credentials.
+
+The semantic index uses `text-embedding-3-small` with 512 dimensions when you
+choose **Build semantic index**. The launcher initializes local storage on
+startup. Building an index sends the commit’s selected text chunks to OpenAI.
 
 The chat adapter sends the question and selected evidence excerpts to OpenAI.
 RepoPilot builds each citation link from the stored repository, commit, path
