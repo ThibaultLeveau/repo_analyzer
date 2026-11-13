@@ -61,6 +61,14 @@ def _requirements_group(path: PurePosixPath) -> str:
     return {"base": "runtime", "main": "runtime", "prod": "runtime"}.get(stem, stem)
 
 
+def toml_pairs(data: bytes) -> Iterator[tuple[tuple[str, ...], Node]]:
+    tomllib.loads(data.decode())
+    tree = Parser(Language(tree_sitter_toml.language())).parse(data)
+    if tree.root_node.has_error:
+        raise ValueError("Unsupported TOML syntax for source locations")
+    yield from _pairs(tree.root_node, data)
+
+
 def _logical_lines(lines: list[str]) -> Iterator[tuple[int, int, str]]:
     parts: list[str] = []
     start = 1
@@ -169,21 +177,15 @@ class _Reader:
         text = self.read(path)
         if text is None:
             return
-        try:
-            tomllib.loads(text)
-        except tomllib.TOMLDecodeError as exc:
-            self.diagnostics.append(Diagnostic(path, None, str(exc)))
-            return
         data = text.encode()
         lines = text.split("\n")
-        tree = Parser(Language(tree_sitter_toml.language())).parse(data)
-        if tree.root_node.has_error:
-            self.diagnostics.append(
-                Diagnostic(path, None, "Unsupported TOML syntax for source locations")
-            )
+        try:
+            pairs = list(toml_pairs(data))
+        except ValueError as exc:
+            self.diagnostics.append(Diagnostic(path, None, str(exc)))
             return
         groups: dict[str, Node] = {}
-        for keys, value in _pairs(tree.root_node, data):
+        for keys, value in pairs:
             if keys == ("project", "dependencies"):
                 groups["runtime"] = value
             elif len(keys) == 3 and keys[:2] == ("project", "optional-dependencies"):
