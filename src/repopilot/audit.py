@@ -74,6 +74,8 @@ def analyze_audit(
     findings: list[Finding] = []
     for module in facts.modules:
         path = PurePosixPath(module.span.path)
+        if path.suffix != ".py":
+            continue
         if (
             not module.is_package
             and module.symbols

@@ -92,6 +92,8 @@ def analyze_dependencies(
 
     for module in (facts or analyze_python(snapshot)).modules:
         path = PurePosixPath(module.span.path)
+        if path.suffix != ".py":
+            continue
         is_test = (
             bool({"test", "tests"} & set(path.parts[:-1]))
             or path.name.startswith("test_")

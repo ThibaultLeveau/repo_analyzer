@@ -11,8 +11,9 @@ from pydantic import TypeAdapter, ValidationError
 from repopilot.audit import Audit
 from repopilot.dependencies import DependencyReport, analyze_dependencies
 from repopilot.events import measure
+from repopilot.languages import analyze_snapshot
 from repopilot.onboarding import SetupEvidence, extract_setup
-from repopilot.python_facts import PythonFacts, analyze_python
+from repopilot.python_facts import PythonFacts
 from repopilot.snapshots import SourceSnapshot
 
 _FACTS = TypeAdapter(PythonFacts)
@@ -87,7 +88,7 @@ class Artifacts:
             "python",
             str(self.versions.python),
             _FACTS,
-            lambda: analyze_python(snapshot),
+            lambda: analyze_snapshot(snapshot),
         )
 
     def dependencies(self, snapshot: SourceSnapshot) -> DependencyReport:

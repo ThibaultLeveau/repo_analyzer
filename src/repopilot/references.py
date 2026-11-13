@@ -244,9 +244,10 @@ class _Scanner(ast.NodeVisitor):
 
 class ReferenceIndex:
     def __init__(self, snapshot: SourceSnapshot, facts: PythonFacts) -> None:
-        counts = Counter(s.name for m in facts.modules for s in m.symbols)
-        module_counts = Counter(m.name for m in facts.modules)
-        modules = {m.name: m for m in facts.modules if module_counts[m.name] == 1}
+        python = [m for m in facts.modules if m.span.path.endswith(".py")]
+        counts = Counter(s.name for m in python for s in m.symbols)
+        module_counts = Counter(m.name for m in python)
+        modules = {m.name: m for m in python if module_counts[m.name] == 1}
         namespaces = set(modules) | set(facts.packages)
         self.definitions = {
             s.name: s
@@ -255,7 +256,7 @@ class ReferenceIndex:
             if counts[s.name] == 1
         }
         self.refs: list[Reference] = []
-        for module in facts.modules:
+        for module in python:
             scanner = _Scanner(module, self.definitions, modules, namespaces)
             scanner.visit(ast.parse(snapshot.read_text(module.span.path)))
             self.refs.extend(scanner.resolve())

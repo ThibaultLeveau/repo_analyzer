@@ -13,8 +13,8 @@ from repopilot.architecture import Architecture
 from repopilot.artifacts import AnalysisVersions, Artifacts
 from repopilot.dependencies import analyze_dependencies
 from repopilot.guide import Guides
+from repopilot.languages import analyze_snapshot
 from repopilot.onboarding import extract_setup
-from repopilot.python_facts import analyze_python
 from repopilot.snapshots import SnapshotCache
 from repopilot.state import StateStore
 
@@ -28,7 +28,7 @@ def test_cache_resumes_recovers_and_scopes_parser_changes(
     cache = SnapshotCache(tmp_path / "sources")
     snap = cache.open(REPO, SHA)
     with (
-        patch("repopilot.artifacts.analyze_python", wraps=analyze_python) as python,
+        patch("repopilot.artifacts.analyze_snapshot", wraps=analyze_snapshot) as python,
         patch(
             "repopilot.artifacts.analyze_dependencies", wraps=analyze_dependencies
         ) as dependencies,
