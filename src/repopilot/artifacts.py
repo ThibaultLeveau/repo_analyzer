@@ -60,6 +60,9 @@ class Artifacts:
         version = str(self.versions.python)
         return version + self._language_version(snapshot)
 
+    def audit_version(self, snapshot: SourceSnapshot) -> str:
+        return f"2.{self.facts_version(snapshot)}.{self.versions.dependencies}"
+
     def read[T](
         self,
         directory: Path,
@@ -67,6 +70,8 @@ class Artifacts:
         version: str,
         schema: TypeAdapter[T],
         compute: Callable[[], T],
+        *,
+        reuse: Callable[[T], bool] | None = None,
     ) -> T:
         with (
             measure("cache.read") as metrics,
@@ -83,8 +88,9 @@ class Artifacts:
             if row is not None:
                 try:
                     cached = schema.validate_json(row[0], strict=True)
-                    metrics.cache = "hit"
-                    return cached
+                    if reuse is None or reuse(cached):
+                        metrics.cache = "hit"
+                        return cached
                 except ValidationError:
                     pass
             metrics.cache = "miss"
@@ -162,6 +168,11 @@ class Artifacts:
                 ),
                 saved("setup", str(self.versions.setup), _SETUP),
                 saved(
+                    "audit",
+                    self.audit_version(snapshot),
+                    TypeAdapter(Audit),
+                )
+                or saved(
                     "audit",
                     f"1.{self.facts_version(snapshot)}.{self.versions.dependencies}",
                     TypeAdapter(Audit),

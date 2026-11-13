@@ -40,6 +40,7 @@ from repopilot.resources import ResourceSampler
 from repopilot.scoring import RUBRIC, Scores, assess, easier_first, issue_revision
 from repopilot.search import QUERY_LIMIT
 from repopilot.snapshots import SnapshotError
+from repopilot.specialists import explain as explain_findings
 from repopilot.state import Job, JobStateError
 
 if TYPE_CHECKING:
@@ -666,22 +667,36 @@ def create_app(
             dependencies_url=request.url_for("dependencies", **paths),
         )
 
-    @app.get("/repos/{owner}/{repo}/{sha}/audit", response_class=HTMLResponse)
-    def audit_view(
-        request: Request, owner: str, repo: str, sha: str, finding: str = ""
+    audit_path = "/repos/{owner}/{repo}/{sha}/audit"
+
+    def render_audit(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        finding: str,
+        category: str,
+        *,
+        explain: bool = False,
     ) -> HTMLResponse:
         repository = f"{owner}/{repo}"
         try:
             report = architecture.audit(repository, sha)
         except (FileNotFoundError, GitHubError, SnapshotError) as exc:
             raise HTTPException(404, "Snapshot not found") from exc
-        selected = next((f for f in report.findings if f.key == finding), None)
+        categories = ("quality", "security", "performance", "style")
+        if category and category not in categories:
+            raise HTTPException(422, "Unknown finding category")
+        visible = [f for f in report.findings if not category or f.category == category]
+        selected = next((f for f in visible if f.key == finding), None)
         if finding and selected is None:
             raise HTTPException(404, "Finding not found in this snapshot")
-        if selected is None and report.findings:
-            selected = report.findings[0]
+        if selected is None and visible:
+            selected = visible[0]
+        if explain and selected:
+            selected = explain_findings([selected], repository, sha, model)[0]
         excerpt: list[str] = []
-        if selected:
+        if selected and selected.category not in {"security", "performance"}:
             span = selected.span
             lines = engine.cache.open(repository, sha).lines(span.path)
             excerpt = lines[span.start - 1 : min(span.end, span.start + 7)]
@@ -693,10 +708,36 @@ def create_app(
             sha=sha,
             report=report,
             selected=selected,
+            categories=categories,
+            category=category,
+            findings=visible,
+            explained=explain,
             excerpt=excerpt,
             audit_url=request.url_for("audit_view", **paths),
             explorer_url=request.url_for("explorer", **paths),
         )
+
+    @app.get(audit_path, response_class=HTMLResponse)
+    def audit_view(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        finding: str = "",
+        category: str = "",
+    ) -> HTMLResponse:
+        return render_audit(request, owner, repo, sha, finding, category)
+
+    @app.post(audit_path, dependencies=[Depends(protect)], response_class=HTMLResponse)
+    def explain_finding(
+        request: Request,
+        owner: str,
+        repo: str,
+        sha: str,
+        finding: str,
+        category: str = "",
+    ) -> HTMLResponse:
+        return render_audit(request, owner, repo, sha, finding, category, explain=True)
 
     @app.get("/repos/{owner}/{repo}/{sha}/architecture", response_class=HTMLResponse)
     def architecture_view(

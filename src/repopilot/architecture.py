@@ -5,7 +5,8 @@ from functools import lru_cache
 from pydantic import TypeAdapter
 
 from repopilot.artifacts import Artifacts
-from repopilot.audit import Audit, analyze_audit
+from repopilot.audit import Audit
+from repopilot.audit_graph import unified_audit
 from repopilot.grounding import (
     DEFAULT_MODEL,
     Evidence,
@@ -103,21 +104,20 @@ class Architecture:
         self.model_name = os.getenv("REPOPILOT_CHAT_MODEL") or DEFAULT_MODEL
         self.inventory = lru_cache(maxsize=4)(self._inventory)
         self.graph = lru_cache(maxsize=4)(self._graph)
-        self.audit = lru_cache(maxsize=4)(self._audit)
 
-    def _audit(self, repository: str, sha: str) -> Audit:
+    def audit(self, repository: str, sha: str) -> Audit:
         snapshot = self.cache.open(repository, sha)
-        versions = self.artifacts.versions
         return self.artifacts.read(
             snapshot.database.parent,
             "audit",
-            f"1.{self.artifacts.facts_version(snapshot)}.{versions.dependencies}",
+            self.artifacts.audit_version(snapshot),
             TypeAdapter(Audit),
-            lambda: analyze_audit(
+            lambda: unified_audit(
                 snapshot,
                 self.artifacts.python(snapshot),
                 self.artifacts.dependencies(snapshot),
             ),
+            reuse=lambda audit: not audit.failed_specialists,
         )
 
     def _graph(self, repository: str, sha: str) -> ModuleGraph:

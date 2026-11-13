@@ -31,6 +31,7 @@ class Audit:
     test_files: int
     skipped_modules: int
     coverage: tuple[int, int] | None
+    failed_specialists: tuple[str, ...] = ()
 
 
 def _test_name(path: PurePosixPath) -> bool:
@@ -89,7 +90,11 @@ def style_findings(module: Module) -> list[Finding]:
 
 
 def analyze_audit(
-    snapshot: SourceSnapshot, facts: PythonFacts, deps: DependencyReport
+    snapshot: SourceSnapshot,
+    facts: PythonFacts,
+    deps: DependencyReport,
+    *,
+    include_style: bool = True,
 ) -> Audit:
     test_paths = {
         PurePosixPath(entry.path)
@@ -120,7 +125,8 @@ def analyze_audit(
                     module.symbols[0].span,
                 )
             )
-        findings.extend(style_findings(module))
+        if include_style:
+            findings.extend(style_findings(module))
     if deps.manifests.paths and not deps.manifests.diagnostics:
         for package in deps.packages.values():
             if package.observation == "Possibly undeclared":
