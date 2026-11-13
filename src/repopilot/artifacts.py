@@ -50,16 +50,15 @@ class Artifacts:
 
     @staticmethod
     @lru_cache(maxsize=32)
-    def _has_javascript(snapshot: SourceSnapshot) -> bool:
-        return any(
-            e.kind != "directory"
-            and (e.path.endswith(SUFFIXES) or Path(e.path).name == "package.json")
-            for e in snapshot.tree()
-        )
+    def _language_version(snapshot: SourceSnapshot) -> str:
+        files = [e.path for e in snapshot.tree() if e.kind != "directory"]
+        js = any(p.endswith(SUFFIXES) or Path(p).name == "package.json" for p in files)
+        go = any(p.endswith(".go") or Path(p).name == "go.mod" for p in files)
+        return ("-js1" if js else "") + ("-go1" if go else "")
 
     def facts_version(self, snapshot: SourceSnapshot) -> str:
         version = str(self.versions.python)
-        return version + "-js1" if self._has_javascript(snapshot) else version
+        return version + self._language_version(snapshot)
 
     def read[T](
         self,

@@ -45,11 +45,20 @@ class ModuleGraph:
         self.nodes = {m.span.path: Node(m.name, m.span.path) for m in facts.modules}
         counts = Counter(n.name for n in self.nodes.values())
         targets = {n.name: n for n in self.nodes.values() if counts[n.name] == 1}
+        go_packages: dict[str, list[Node]] = defaultdict(list)
+        for node in self.nodes.values():
+            if node.path.endswith(".go") and not node.path.endswith("_test.go"):
+                go_packages[node.name].append(node)
         sites: dict[tuple[Node, Node], set[Span]] = defaultdict(set)
         for module in facts.modules:
             source = self.nodes[module.span.path]
             for item in module.imports:
-                if item.kind == "local" and not item.dynamic and item.target in targets:
+                if item.kind != "local" or item.dynamic or not item.target:
+                    continue
+                if source.path.endswith(".go"):
+                    for member in go_packages.get(item.target, []):
+                        sites[source, member].add(item.span)
+                elif item.target in targets:
                     sites[source, targets[item.target]].add(item.span)
         self.edges = tuple(
             Edge(source, target, tuple(sorted(spans, key=lambda s: (s.start, s.end))))

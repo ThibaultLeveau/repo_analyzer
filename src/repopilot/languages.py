@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from pathlib import PurePosixPath
 from typing import Protocol
 
+from repopilot.golang import GoAnalyzer
 from repopilot.javascript import JavaScriptAnalyzer
 from repopilot.python_facts import (
     Diagnostic,
@@ -68,7 +69,7 @@ def analyze(snapshot: SourceSnapshot, analyzers: Sequence[Analyzer]) -> PythonFa
     )
 
 
-BUILTINS: tuple[Analyzer, ...] = (PythonAnalyzer(), JavaScriptAnalyzer())
+BUILTINS: tuple[Analyzer, ...] = (PythonAnalyzer(), JavaScriptAnalyzer(), GoAnalyzer())
 
 
 def analyze_snapshot(snapshot: SourceSnapshot) -> PythonFacts:

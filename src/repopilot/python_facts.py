@@ -20,7 +20,7 @@ class Span:
 @dataclass(frozen=True)
 class Symbol:
     name: str
-    kind: Literal["class", "method", "function", "assignment"]
+    kind: Literal["class", "method", "function", "assignment", "type", "package"]
     span: Span
     is_async: bool = False
 
